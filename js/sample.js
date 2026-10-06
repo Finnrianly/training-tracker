@@ -96,22 +96,18 @@ function buildSampleEntries() {
         entries.push({ id: `drink-${date}`, date, type: 'drink', ...drinks });
       }
 
+      /* ---- STEPS (most days; a few days left unlogged) ---- */
+      if (rand() > 0.15) {
+        const steps = Math.round(5000 + rand() * 9000);
+        entries.push({ id: `steps-${date}`, date, type: 'steps', steps });
+      }
+
       /* ---- BODYWEIGHT (Mon, Wed, Fri) ---- */
       if ([0, 2, 4].includes(dow) && rand() > 0.15) {
         const kg = round2(weight + (rand() - 0.5) * 0.4);
         entries.push({ id: id('bw'), date, type: 'bodyweight', kg });
       }
     });
-
-    /* ---- STEPS (once per completed week, stored on Monday) ---- */
-    const sun = days[6];
-    if (sun <= today && training !== 'partial') {
-      const avgSteps = Math.round(7500 + seeded(dateToSeed(mon))() * 4000);
-      entries.push({
-        id: `steps-${mon}`, date: mon, type: 'steps',
-        avgSteps, stepsLoad: round1(computeStepsLoad(avgSteps)),
-      });
-    }
 
     /* weight drifts down slightly each week */
     weight -= 0.2 + seeded(dateToSeed(mon))() * 0.35;

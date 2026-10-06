@@ -148,6 +148,41 @@ async function getEntriesByDateAndType(date, type) {
 }
 
 /* ----------------------------------------------------------
+   Migration: weekly steps -> daily steps
+   Old format (one per week, dated the Monday):
+     { id: 'steps-<monday>', type: 'steps', avgSteps, stepsLoad }
+   New format (one per day):
+     { id: 'steps-<date>',   type: 'steps', steps }
+   Each old weekly average becomes that value on every day of the
+   week, so the week's steps load is unchanged. For the current
+   week only days up to yesterday are filled (today and later are
+   left for you to log). Safe to run repeatedly.
+   ---------------------------------------------------------- */
+async function migrateWeeklySteps() {
+  await openDB();
+  const old = (await getEntriesByType(ENTRY_TYPES.STEPS))
+    .filter(e => typeof e.avgSteps === 'number' && typeof e.steps !== 'number');
+  if (!old.length) return 0;
+
+  const today = todayStr();
+  const tx    = _db.transaction([STORE], 'readwrite');
+  const store = tx.objectStore(STORE);
+  for (const e of old) {
+    store.delete(e.id);
+    for (const date of weekDays(weekStartStr(e.date))) {
+      if (date >= today) continue;
+      store.put({ id: `steps-${date}`, date, type: ENTRY_TYPES.STEPS,
+        steps: e.avgSteps, migratedFrom: 'weekly' });
+    }
+  }
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = resolve;
+    tx.onerror    = (ev) => reject(ev.target.error);
+  });
+  return old.length;
+}
+
+/* ----------------------------------------------------------
    Export (download JSON file)
    ---------------------------------------------------------- */
 async function exportData() {
@@ -202,6 +237,9 @@ async function importData(jsonString) {
     tx.oncomplete = resolve;
     tx.onerror    = (e) => reject(e.target.error);
   });
+
+  /* Older backups may still hold weekly steps */
+  await migrateWeeklySteps();
 
   /* Restore settings if present */
   if (payload.settings) {

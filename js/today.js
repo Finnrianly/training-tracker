@@ -37,6 +37,7 @@ async function renderToday() {
     const desserts  = todayEntries.filter(e => e.type === 'dessert');
     const drink     = todayEntries.find(e => e.type === 'drink') || null;
     const weights   = todayEntries.filter(e => e.type === 'bodyweight');
+    const steps     = todayEntries.find(e => e.type === 'steps' && typeof e.steps === 'number') || null;
 
     const frag = document.createDocumentFragment();
     frag.appendChild(buildDateBar());
@@ -45,6 +46,7 @@ async function renderToday() {
     frag.appendChild(buildActivitiesSection());
     frag.appendChild(buildRecoverySection(recovery));
     frag.appendChild(buildDietSection(takeaways, desserts, drink));
+    frag.appendChild(buildStepsSection(steps));
     frag.appendChild(buildBodyweightSection(weights));
     frag.appendChild(buildLoggedSection(todayEntries));
 
@@ -113,6 +115,16 @@ function attachTodayHandlers() {
     await clearDrinkEntry(_selectedDate); renderToday();
   });
 
+  body.querySelector('#steps-save')?.addEventListener('click', saveSteps);
+  body.querySelector('#steps-input')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveSteps();
+  });
+  body.querySelector('#steps-input')?.addEventListener('input', e => {
+    const n = parseSteps(e.target.value);
+    const sub = body.querySelector('#steps-sub');
+    if (sub && n !== null) sub.textContent = `${fmtLoad(round1(computeDailyStepsLoad(n)))} load`;
+  });
+
   body.querySelector('#weight-save')?.addEventListener('click', saveWeight);
   body.querySelector('#weight-input')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') saveWeight();
@@ -143,6 +155,21 @@ async function saveWeight() {
   if (!val || val < 20 || val > 300) return showToast('Enter a valid weight.', 'error');
   await addEntry({ date: _selectedDate, type: 'bodyweight', kg: val });
   showToast('Weight saved.');
+  renderToday();
+}
+
+/* Accepts "10240", "10,240" or "10 240" */
+function parseSteps(text) {
+  const digits = String(text).replace(/[^0-9]/g, '');
+  return digits ? parseInt(digits, 10) : null;
+}
+
+/* One steps entry per day: saving replaces that day's value */
+async function saveSteps() {
+  const n = parseSteps(document.getElementById('steps-input')?.value);
+  if (n === null || n > 150000) return showToast('Enter a valid step count.', 'error');
+  await putEntry({ id: `steps-${_selectedDate}`, date: _selectedDate, type: 'steps', steps: n });
+  showToast(`${n.toLocaleString('en-IE')} steps saved. ${fmtLoad(round1(computeDailyStepsLoad(n)))} load.`);
   renderToday();
 }
 
@@ -196,7 +223,7 @@ function buildPaceCard(thisW, lastW) {
   div.innerHTML = `
     <div class="card-title">This week vs last week (same point)</div>
     <div class="pace-card">
-      ${paceStat('Training load', thisLoad, lastLoad, true)}
+      ${paceStat('Total load', thisLoad, lastLoad, true)}
       ${paceStat('Takeaway damage', thisDmg, lastDmg, false)}
     </div>`;
   return div;
@@ -389,6 +416,33 @@ async function clearDrinkEntry(date) {
 }
 
 /* ----------------------------------------------------------
+   Steps (day total from Apple Health)
+   ---------------------------------------------------------- */
+function buildStepsSection(entry) {
+  const has  = entry !== null;
+  const sub  = has
+    ? `${fmtLoad(round1(computeDailyStepsLoad(entry.steps)))} load`
+    : `Day total from Apple Health. Over ${CONFIG.steps.baseline.toLocaleString('en-IE')} adds load`;
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.innerHTML = `
+    <div class="card-title">Steps</div>
+    <div class="form-row" style="padding:0;">
+      <div class="form-label">
+        ${has ? 'Logged' : 'Daily steps'}
+        <div class="form-sublabel" id="steps-sub">${sub}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="text" inputmode="numeric" pattern="[0-9,]*" autocomplete="off"
+          class="input-field input-field-sm mono" id="steps-input" placeholder="10,240"
+          value="${has ? entry.steps.toLocaleString('en-IE') : ''}" style="width:96px;">
+        <button class="btn btn-sm btn-primary" id="steps-save">${has ? 'Update' : 'Save'}</button>
+      </div>
+    </div>`;
+  return div;
+}
+
+/* ----------------------------------------------------------
    Bodyweight
    ---------------------------------------------------------- */
 function buildBodyweightSection(weights) {
@@ -510,6 +564,10 @@ function entryDisplay(e) {
         value: `${e.points} pts` };
     case 'bodyweight':
       return { icon: '⚖️', title: 'Weigh-in', sub: null, value: `${e.kg} kg` };
+    case 'steps':
+      if (typeof e.steps !== 'number') return null;
+      return { icon: '👟', title: 'Steps', sub: e.steps.toLocaleString('en-IE'),
+        value: `${fmtLoad(round1(computeDailyStepsLoad(e.steps)))} load` };
     default: return null;
   }
 }
@@ -894,10 +952,9 @@ function calcLoad(minutes, rpe) {
   return Math.round((minutes * rpe / 10) * 10) / 10;
 }
 
+/* Training + steps load */
 function calcTotalLoad(entries) {
-  return Math.round(
-    entries.filter(e => e.type === 'training').reduce((s, e) => s + (e.load || 0), 0) * 10
-  ) / 10;
+  return round1(weekTrainingLoad(entries) + weekStepsLoad(entries));
 }
 
 function calcTakeawayDamage(entries) {

@@ -24,7 +24,7 @@ Clean light style. Background #F6F7F9, cards white with 1px #E3E6EB border and 1
 
 ### Top: pace card (daily motivation)
 Two live numbers, each compared to the same point in last week (e.g. Monday to Wednesday this week vs Monday to Wednesday last week), with % change and colour:
-1. **Training load so far** (higher is green)
+1. **Total load so far** (training + steps, higher is green)
 2. **Takeaway Damage so far** (lower is green)
 
 ### Gym (one tap, duration pre-filled and editable)
@@ -71,6 +71,11 @@ Plus an "Other" option where Finn types a name and picks Heavy / Medium / Light.
 | Medium | Roughly 4 to 8 drinks | 5 |
 | Heavy | Any night with spirits, or 8+ drinks (nightclub, late night) | 9 |
 
+### Steps
+One number field (numeric keypad, e.g. 10,240) for that day's total step count from Apple Health. Respects the date picker, so yesterday's total can be logged the next morning. One entry per day: if steps are already logged for that day, show the value and let it be edited (not additive).
+
+**Daily steps load = max(0, steps - 6,000) ÷ 1,000 × (14 ÷ 7).** Example: 10,000 steps = 8 load that day; 10,000 every day = 56 for the week. Baseline (6,000) and weekly multiplier (14) are editable in Settings. Steps load counts in that day's total load, the daily load bars, "Where the load came from", the pace card and the load ratio. Days with no steps entry count as 0.
+
 ### Bodyweight
 Optional weigh-in field (kg, one decimal). Log as many or as few as Finn wants; ideally about 3 a week, mornings before food. Goal direction: losing weight slowly (0.25 to 0.75 kg a week).
 
@@ -92,31 +97,33 @@ Below: a 7-night bar chart of time in bed, with bars under 8h in orange.
 
 ## Screen 3: Week (the weekly review)
 
-### Sunday input
-One field: **average daily steps this week** (from Apple Health, entered once).
+### Layout (top to bottom)
+1. Week header with date range, arrows and swipe left/right between weeks.
+2. Dashboard (hero + metric tiles).
+3. Charts.
+4. Flags.
+5. Backup reminder (only when due).
+6. "How scores work": collapsed by default, tap to expand. Holds the steps formula, score thresholds and all other formula text.
 
-**Steps load = max(0, avg steps - 6,000) ÷ 1,000 × 14.** Example: 10,000 avg gives 56. Added to the week's total load.
+### Steps (logged daily on Today, see Screen 1)
+Week screen shows **Avg daily steps** (average of the days with steps logged) plus "X of 7 days logged". Days with no steps entry count as 0 load, not as 6,000.
 
-### Headline
-**Week Score out of 100**, shown as the full reveal once the week is complete (Sunday). Mid-week the Week screen shows the parts that exist so far and labels the score "in progress".
+### Hero
+**Week Score out of 100** as a large coloured ring with the number in the middle: 80+ green, 60 to 79 amber, under 60 red. Shown as the full reveal once the week is complete (Sunday); mid-week it is labelled "in progress". Under it: change vs last week (e.g. "+6 vs last week") and the 5 slices (Training, Recovery, Food, Drinks, Body) as small coloured bars showing points earned out of max.
 
-### Numbers dashboard (every number vs last week, arrow coloured by whether up is good or bad)
-- Total training load
-- Load ratio
-- Gym sessions (count by type)
-- Pitch sessions (football and hurling, training and matches)
-- Cardio minutes (runs, conditioning, gym cardio)
-- Avg time in bed
-- Avg wake feeling
-- Recovery score
-- Sauna min / cold sessions / stretch min
-- Takeaway Damage (lower is better)
-- Drinks points (lower is better)
-- Avg bodyweight and change vs last week
-- Avg daily steps
+### Metric tiles (2 per row on phone)
+Total load, Load ratio, Recovery score, Avg time in bed, Avg wake feeling, Gym sessions, Pitch sessions, Cardio minutes, Avg daily steps, Takeaway Damage, Drinks points, Avg bodyweight.
+
+Each tile: label, big number, and a change chip vs last week with arrow + amount (e.g. "▲ 12%" or "▼ 3"). Colour is always paired with an arrow.
+- GREEN = better than last week, RED = worse, GREY = no change or no data last week.
+- Higher is better: total load (while load ratio is 1.5 or under; above 1.5 a drop is better), recovery score, time in bed, wake feeling, gym sessions, pitch sessions, cardio minutes, steps, Week Score.
+- Lower is better: Takeaway Damage, Drinks points, bodyweight.
+- Load ratio uses zone colour, not up/down: green 0.8 to 1.3, amber 1.3 to 1.5, red under 0.8 or over 1.5.
+
+Dashboard colours: green #1E9E5A, red #D93636, amber #E8A317, blue accent #1F4FD1, with light tinted tile backgrounds. Category accent bar on each tile: training blue, recovery purple, diet orange, body teal.
 
 ### Charts
-- Daily load bars, this week vs last week, Monday to Sunday
+- Daily load bars (training + steps), this week vs last week, Monday to Sunday
 - "Where the load came from": load by category (Football, Hurling, Gym, Cardio, Golf/Padel/Tennis, Steps)
 
 ### Flags (auto-generated plain-English callouts, max 4, most important first)

@@ -5,7 +5,8 @@
 
    Formula reference:
      Load             = minutes × RPE ÷ 10
-     Steps load       = max(0, avgSteps - 6 000) ÷ 1 000 × 14
+     Steps load (day) = max(0, steps - 6 000) ÷ 1 000 × (14 ÷ 7)
+                        (one entry per day; 10 000 every day = 56 a week)
      Load ratio       = thisWeekLoad ÷ avg(prev 4 weeks total loads)
      Recovery score   = sleep pts (65) + wake pts (20) + work pts (15)
      Week Score       = training (30) + recovery (30) + food (22)
@@ -13,11 +14,21 @@
    ============================================================ */
 
 /* ----------------------------------------------------------
-   Steps load
+   Steps load (per day)
+   CONFIG.steps.multiplier is the weekly multiplier, so one day
+   gets a seventh of it. A day with no steps entry counts as 0.
    ---------------------------------------------------------- */
-function computeStepsLoad(avgSteps) {
+function computeDailyStepsLoad(steps) {
   const c = CONFIG.steps;
-  return Math.max(0, (avgSteps - c.baseline) / c.divisor * c.multiplier);
+  return Math.max(0, (steps - c.baseline) / c.divisor * (c.multiplier / 7));
+}
+
+/* Daily steps entries, at most one per date (last one wins) */
+function stepsByDate(entries) {
+  const map = {};
+  entries.filter(e => e.type === 'steps' && typeof e.steps === 'number')
+    .forEach(e => { map[e.date] = e.steps; });
+  return map;
 }
 
 /* ----------------------------------------------------------
@@ -30,8 +41,14 @@ function weekTrainingLoad(entries) {
 }
 
 function weekStepsLoad(entries) {
-  const s = entries.find(e => e.type === 'steps');
-  return s ? computeStepsLoad(s.avgSteps) : 0;
+  return Object.values(stepsByDate(entries))
+    .reduce((s, steps) => s + computeDailyStepsLoad(steps), 0);
+}
+
+/* Total load (training + steps) for one date */
+function dayTotalLoad(entries, date) {
+  const dayEntries = entries.filter(e => e.date === date);
+  return round1(weekTrainingLoad(dayEntries) + weekStepsLoad(dayEntries));
 }
 
 function weekTotalLoad(entries) {
@@ -362,10 +379,12 @@ async function computeWeekData(mondayStr) {
 
   /* -- Loads -- */
   const trainingLoad = round1(weekTrainingLoad(w));
-  const stepsEntry   = w.find(e => e.type === 'steps');
-  const avgSteps     = stepsEntry?.avgSteps ?? null;
-  const stepsLoad    = avgSteps !== null ? round1(computeStepsLoad(avgSteps)) : 0;
+  const stepsMap     = stepsByDate(w);
+  const stepsDaysLogged = Object.keys(stepsMap).length;
+  const avgSteps     = stepsDaysLogged > 0 ? Math.round(avg(Object.values(stepsMap))) : null;
+  const stepsLoad    = round1(weekStepsLoad(w));
   const totalLoad    = round1(trainingLoad + stepsLoad);
+  const dailyLoads   = weekDays(mondayStr).map(d => dayTotalLoad(w, d));
 
   /* -- Load ratio -- */
   const prevLoads = weeks.slice(1).map(wk => weekTotalLoad(wk.entries));
@@ -464,7 +483,7 @@ async function computeWeekData(mondayStr) {
 
   return {
     mondayStr, sundayStr, isComplete,
-    trainingLoad, stepsLoad, totalLoad, avgSteps,
+    trainingLoad, stepsLoad, totalLoad, avgSteps, stepsDaysLogged, dailyLoads,
     ratio, ratioStatus: ratioStat, weeksToBaseline, weeksWithLoad,
     gymSessions, pitchSessions, cardioMinutes,
     sleepEntries, nightsLogged, avgHoursInBed, avgWakeFeeling: avgWakeFeel, nightsUnder7_5,
@@ -517,7 +536,8 @@ function round2(v) { return Math.round(v * 100) / 100; }
    Brief worked examples:
 
      Full body: 70 × 8 ÷ 10 = 56
-     Steps: 10 000 avg → max(0, 4000) ÷ 1000 × 14 = 56
+     Steps: 10 000 on a day → max(0, 4000) ÷ 1000 × 2 = 8
+            10 000 every day for a week → 56
      Diet food: damage 2 → 22 pts; damage 12 → 0 pts; damage 7 → 11 pts
      Diet drinks: 4 pts → 8; 15 pts → 0; 9.5 pts → 4
      Training slice: ratio 1.0 → 30; ratio 0.4 → 0; ratio 0.6 → 15;
@@ -537,11 +557,14 @@ function runScoringChecks() {
   ok('Accessory load',  45 * 6 / 10,  27);
   ok('Abs load',        25 * 5 / 10,  12.5);
 
-  /* Steps load */
-  ok('Steps load 10k',  computeStepsLoad(10000), 56);
-  ok('Steps load 6k',   computeStepsLoad(6000),  0);
-  ok('Steps load 5k',   computeStepsLoad(5000),  0);
-  ok('Steps load 20k',  computeStepsLoad(20000), 196);
+  /* Steps load (daily) */
+  ok('Steps load 10k day',  computeDailyStepsLoad(10000), 8);
+  ok('Steps load 6k day',   computeDailyStepsLoad(6000),  0);
+  ok('Steps load 5k day',   computeDailyStepsLoad(5000),  0);
+  ok('Steps load 20k day',  computeDailyStepsLoad(20000), 28);
+  const mockStepsWeek = weekDays('2026-09-28').map(date => ({ date, type: 'steps', steps: 10000 }));
+  ok('Steps load 10k x 7 days', weekStepsLoad(mockStepsWeek), 56);
+  ok('Steps load 3 of 7 days logged', weekStepsLoad(mockStepsWeek.slice(0, 3)), 24);
 
   /* Training slice */
   ok('Training slice 1.0',  trainingSlicePoints(1.0),  30);

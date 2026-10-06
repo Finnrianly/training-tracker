@@ -88,8 +88,7 @@ function weekSummaryFromEntries(monday, allEntries) {
   const w = allEntries.filter(e => e.date >= monday && e.date <= sunday);
 
   const trainingLoad = round1(weekTrainingLoad(w));
-  const stepsE       = w.find(e => e.type === 'steps');
-  const stepsLoad    = stepsE ? round1(computeStepsLoad(stepsE.avgSteps)) : 0;
+  const stepsLoad    = round1(weekStepsLoad(w));
   const totalLoad    = round1(trainingLoad + stepsLoad);
 
   /* Load ratio from previous 4 weeks */

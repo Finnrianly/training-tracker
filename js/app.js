@@ -129,7 +129,9 @@ async function doImport(jsonText) {
    Init: open DB, then show Today tab
    ---------------------------------------------------------- */
 openDB()
-  .then(() => {
+  .then(() => migrateWeeklySteps())
+  .then(n => {
+    if (n) console.log(`Migrated ${n} weekly steps entr${n > 1 ? 'ies' : 'y'} to daily.`);
     showScreen('today');
   })
   .catch((err) => {

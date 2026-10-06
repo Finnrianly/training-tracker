@@ -132,9 +132,9 @@ function buildDrinksCard() {
 function buildStepsCard() {
   const s = CONFIG.steps;
   return card('Steps formula', `
-    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">Load = max(0, steps - baseline) / divisor x multiplier</div>
-    ${sRow('Baseline steps', '', 'steps.baseline', s.baseline, 0, 20000)}
-    ${sRow('Multiplier', 'per 1000 steps above baseline', 'steps.multiplier', s.multiplier, 1, 100)}
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">Daily load = max(0, day's steps - baseline) / divisor x (weekly multiplier / 7)</div>
+    ${sRow('Baseline steps', 'per day', 'steps.baseline', s.baseline, 0, 20000)}
+    ${sRow('Weekly multiplier', 'per 1000 steps above baseline, a day gets 1/7', 'steps.multiplier', s.multiplier, 1, 100)}
     ${sRow('Divisor', '', 'steps.divisor', s.divisor, 100, 10000, true)}`);
 }
 
