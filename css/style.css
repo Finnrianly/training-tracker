@@ -1,0 +1,1004 @@
+/* ============================================================
+   Design tokens
+   ============================================================ */
+:root {
+  --bg:            #F6F7F9;
+  --card-bg:       #ffffff;
+  --card-border:   #E3E6EB;
+  --card-radius:   16px;
+  --text:          #15181E;
+  --text-secondary:#5A6270;
+  --accent:        #1F4FD1;
+  --green:         #2E7D4F;
+  --orange:        #B4520F;
+  --red:           #C0392B;
+  --amber:         #B4520F;
+
+  --font-text: 'Manrope', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --tab-height:    64px;
+  --header-height: 52px;
+  --safe-bottom:   env(safe-area-inset-bottom, 0px);
+  --safe-top:      env(safe-area-inset-top, 0px);
+
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06);
+  --transition: 0.15s ease;
+}
+
+/* ============================================================
+   Reset & base
+   ============================================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-text);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font-family: var(--font-text);
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input, select, textarea {
+  font-family: var(--font-text);
+  font-size: 15px;
+  color: var(--text);
+}
+
+h1, h2, h3 {
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* ============================================================
+   App shell
+   ============================================================ */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 430px;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+#screens {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ============================================================
+   Screens
+   ============================================================ */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.screen.hidden {
+  display: none;
+}
+
+.screen-header {
+  padding: 16px 16px 12px;
+  padding-top: calc(16px + var(--safe-top));
+  background: var(--bg);
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.screen-header h1 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.screen-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.screen-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  padding-bottom: calc(12px + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ============================================================
+   Cards
+   ============================================================ */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.card-title-large {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ============================================================
+   Tab bar
+   ============================================================ */
+#tab-bar {
+  display: flex;
+  background: var(--card-bg);
+  border-top: 1px solid var(--card-border);
+  padding-bottom: var(--safe-bottom);
+  flex-shrink: 0;
+  height: calc(var(--tab-height) + var(--safe-bottom));
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 44px;
+  height: var(--tab-height);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 8px 4px;
+  transition: color var(--transition);
+  position: relative;
+}
+
+.tab svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+
+.tab span {
+  line-height: 1;
+}
+
+.tab.active {
+  color: var(--accent);
+}
+
+.tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 0 0 2px 2px;
+}
+
+.tab:active {
+  opacity: 0.7;
+}
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  transition: opacity var(--transition), background var(--transition);
+  cursor: pointer;
+  border: none;
+  white-space: nowrap;
+}
+
+.btn:active {
+  opacity: 0.75;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-secondary {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--card-border);
+}
+
+.btn-danger {
+  background: #FEE2E2;
+  color: #C0392B;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--accent);
+  padding: 10px 12px;
+}
+
+.btn-sm {
+  min-height: 36px;
+  padding: 7px 14px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+.btn-full {
+  width: 100%;
+}
+
+.btn-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-group .btn {
+  flex: 1;
+}
+
+/* ============================================================
+   Counter controls
+   ============================================================ */
+.counter-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.counter-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.counter-btn:active {
+  background: var(--card-border);
+}
+
+.counter-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* ============================================================
+   Form elements
+   ============================================================ */
+.form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.form-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.form-row:first-child {
+  padding-top: 0;
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+}
+
+.form-sublabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.input-field {
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 15px;
+  color: var(--text);
+  width: 100%;
+  min-height: 44px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.input-field:focus {
+  border-color: var(--accent);
+}
+
+.input-field-sm {
+  width: 80px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+/* ============================================================
+   Pill / option buttons (single-select groups)
+   ============================================================ */
+.pill-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  color: var(--text);
+  min-height: 36px;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition), color var(--transition);
+}
+
+.pill.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.pill:active {
+  opacity: 0.75;
+}
+
+/* ============================================================
+   Metric / stat display
+   ============================================================ */
+.metric-large {
+  font-family: var(--font-mono);
+  font-size: 36px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1;
+}
+
+.metric-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.metric-change {
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.metric-change.up-good,
+.metric-change.down-bad {
+  color: var(--green);
+}
+
+.metric-change.down-good,
+.metric-change.up-bad {
+  color: var(--orange);
+}
+
+.metric-change.neutral {
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   Pace card (2-up stat layout)
+   ============================================================ */
+.pace-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.pace-stat {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.pace-stat-value {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+}
+
+.pace-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.pace-stat-change {
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* ============================================================
+   List items (logged today, history rows)
+   ============================================================ */
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.list-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.list-item:first-child {
+  padding-top: 0;
+}
+
+.list-item-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+
+.list-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.list-item-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.list-item-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.list-item-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.icon-btn:active {
+  opacity: 0.7;
+}
+
+.icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ============================================================
+   Section divider label
+   ============================================================ */
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  padding: 4px 0 2px;
+}
+
+/* ============================================================
+   Bar chart
+   ============================================================ */
+.bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 80px;
+}
+
+.bar-chart-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  height: 100%;
+  justify-content: flex-end;
+}
+
+.bar-chart-bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+  transition: height 0.3s ease;
+}
+
+.bar-chart-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* ============================================================
+   Score ring / display
+   ============================================================ */
+.score-display {
+  text-align: center;
+  padding: 8px 0;
+}
+
+.score-number {
+  font-family: var(--font-mono);
+  font-size: 56px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text);
+}
+
+.score-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* ============================================================
+   Colour utility classes
+   ============================================================ */
+.text-green   { color: var(--green); }
+.text-orange  { color: var(--orange); }
+.text-red     { color: var(--red); }
+.text-accent  { color: var(--accent); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted   { color: var(--text-secondary); font-size: 13px; }
+
+.bg-green-soft  { background: #E8F5EE; }
+.bg-orange-soft { background: #FEF3E9; }
+.bg-red-soft    { background: #FEE2E2; }
+.bg-accent-soft { background: #EEF2FD; }
+
+/* ============================================================
+   Flag / callout block
+   ============================================================ */
+.flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.flag + .flag {
+  margin-top: 6px;
+}
+
+.flag-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.flag-positive {
+  background: #E8F5EE;
+  color: var(--green);
+}
+
+.flag-warning {
+  background: #FEF3E9;
+  color: var(--orange);
+}
+
+.flag-danger {
+  background: #FEE2E2;
+  color: var(--red);
+}
+
+.flag-neutral {
+  background: var(--bg);
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   Toast notifications
+   ============================================================ */
+#toast-container {
+  position: fixed;
+  bottom: calc(var(--tab-height) + var(--safe-bottom) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  width: calc(100% - 32px);
+  max-width: 398px;
+}
+
+.toast {
+  background: var(--text);
+  color: #fff;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  animation: toast-in 0.2s ease, toast-out 0.2s ease 2.3s forwards;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+}
+
+.toast-success { background: var(--green); }
+.toast-error   { background: #C0392B; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* ============================================================
+   Modal / bottom sheet
+   ============================================================ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 500;
+  display: flex;
+  align-items: flex-end;
+}
+
+.modal-overlay.hidden {
+  display: none;
+}
+
+.modal-sheet {
+  background: var(--card-bg);
+  border-radius: 20px 20px 0 0;
+  padding: 20px 16px;
+  padding-bottom: calc(20px + var(--safe-bottom));
+  width: 100%;
+  max-height: 85dvh;
+  overflow-y: auto;
+  animation: sheet-in 0.25s ease;
+}
+
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.modal-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--card-border);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+/* ============================================================
+   Tile grid (activity tiles)
+   ============================================================ */
+.tile-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tile {
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  min-height: 68px;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.tile:active {
+  background: var(--card-border);
+}
+
+.tile-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.tile-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.tile-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ============================================================
+   Divider
+   ============================================================ */
+.divider {
+  height: 1px;
+  background: var(--card-border);
+  margin: 4px 0;
+}
+
+/* ============================================================
+   Badge / tag
+   ============================================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--card-border);
+}
+
+.badge-green  { background: #E8F5EE; color: var(--green); border-color: #C3E6D0; }
+.badge-orange { background: #FEF3E9; color: var(--orange); border-color: #F5D5B2; }
+.badge-red    { background: #FEE2E2; color: var(--red); border-color: #FCA5A5; }
+.badge-blue   { background: #EEF2FD; color: var(--accent); border-color: #C0CEFB; }
+
+/* ============================================================
+   Utility
+   ============================================================ */
+.mono { font-family: var(--font-mono); }
+.bold { font-weight: 700; }
+.mt-4 { margin-top: 4px; }
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mb-4 { margin-bottom: 4px; }
+.mb-8 { margin-bottom: 8px; }
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gap-6 { gap: 6px; }
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+
+/* ============================================================
+   Scrollbar (subtle on desktop)
+   ============================================================ */
+.screen-body::-webkit-scrollbar { width: 0; }
+
+/* ============================================================
+   Wake feeling buttons (Sleep screen)
+   ============================================================ */
+.feeling-row {
+  display: flex;
+  gap: 6px;
+}
+
+.feeling-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 4px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  cursor: pointer;
+  min-height: 56px;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.feeling-btn:active {
+  opacity: 0.75;
+}
+
+.feeling-btn.feeling-selected {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.feeling-btn.feeling-selected .feeling-num,
+.feeling-btn.feeling-selected .feeling-lbl {
+  color: #fff;
+}
+
+.feeling-num {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+
+.feeling-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* ============================================================
+   Settings specific
+   ============================================================ */
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.settings-row:first-child {
+  padding-top: 0;
+}
+
+.settings-row-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-row-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+.settings-input {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  width: 72px;
+  text-align: center;
+  background: var(--bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  min-height: 36px;
+  color: var(--text);
+  outline: none;
+}
+
+.settings-input:focus {
+  border-color: var(--accent);
+}

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Full-bleed background (no rounded corners -- OS handles masking) -->
+  <rect width="512" height="512" fill="#1F4FD1"/>
+  <!-- Bars inset to the safe zone (80% of 512 = 409.6, centred: 51 each side) -->
+  <rect x="112" y="348" width="74" height="108" rx="12" fill="white"/>
+  <rect x="219" y="260" width="74" height="196" rx="12" fill="white"/>
+  <rect x="326" y="168" width="74" height="288" rx="12" fill="white"/>
+  <polyline
+    points="149,348 256,260 363,168"
+    fill="none" stroke="white" stroke-width="14"
+    stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
+</svg>
