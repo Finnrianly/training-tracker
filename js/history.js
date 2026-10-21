@@ -1,6 +1,7 @@
 /* ============================================================
    HISTORY SCREEN
-   Three views: Weeks | Months | Trends
+   Four views: Weeks | Months | Review | Trends
+   (Review, the monthly review, lives in review.js)
    ============================================================ */
 
 let _histView = 'weeks';
@@ -35,6 +36,7 @@ async function renderHistory() {
 
     if (_histView === 'weeks')  frag.appendChild(buildWeeksView(weeks));
     if (_histView === 'months') frag.appendChild(buildMonthsView(weeks));
+    if (_histView === 'review') buildMonthReview(all).forEach(el => frag.appendChild(el));
     if (_histView === 'trends') frag.appendChild(buildTrendsView(weeks));
 
     body.innerHTML = '';
@@ -54,7 +56,7 @@ function buildHistTabs() {
   const div = document.createElement('div');
   div.innerHTML = `
     <div style="display:flex;gap:6px;padding:2px 0 2px;">
-      ${['weeks','months','trends'].map(v => `
+      ${['weeks','months','review','trends'].map(v => `
         <button class="pill${_histView === v ? ' selected' : ''}" data-hist-view="${v}"
           style="flex:1;justify-content:center;">
           ${v.charAt(0).toUpperCase() + v.slice(1)}
@@ -299,6 +301,7 @@ function buildMiniChart({ label, vals, max, unit, low, lowerGood }, weeks) {
    ---------------------------------------------------------- */
 function attachHistHandlers(weeks) {
   const body = document.getElementById('history-body');
+  if (_histView === 'review') attachReviewHandlers();
 
   body.querySelectorAll('[data-hist-view]').forEach(btn =>
     btn.addEventListener('click', () => {
