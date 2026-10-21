@@ -7,7 +7,7 @@
    Bump CACHE_VERSION when deploying a new build to force refresh.
    ============================================================ */
 
-const CACHE_VERSION = 'tt-v2';
+const CACHE_VERSION = 'tt-v3';
 const FONT_CACHE    = 'tt-fonts-v1';
 
 const APP_SHELL = [

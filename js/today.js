@@ -9,7 +9,9 @@ SCREEN_RENDERERS['today'] = renderToday;
 /* ----------------------------------------------------------
    Main render
    ---------------------------------------------------------- */
-async function renderToday() {
+/* keepTyped: carry unsaved typed values (steps, weight) across the re-render,
+   so tapping a button elsewhere on the screen never wipes them */
+async function renderToday({ keepTyped = true } = {}) {
   const body = document.getElementById('today-body');
   const scrollTop = body.scrollTop;
 
@@ -50,14 +52,34 @@ async function renderToday() {
     frag.appendChild(buildBodyweightSection(weights));
     frag.appendChild(buildLoggedSection(todayEntries));
 
+    const typed = keepTyped ? unsavedInputs(body) : {};
     body.innerHTML = '';
     body.appendChild(frag);
     body.scrollTop = scrollTop;
     attachTodayHandlers();
+    restoreInputs(body, typed);
 
   } catch (err) {
     body.innerHTML = `<div class="card"><p class="text-secondary">Error: ${err.message}</p></div>`;
   }
+}
+
+/* Inputs whose value differs from what was rendered, by id */
+function unsavedInputs(root) {
+  const out = {};
+  root.querySelectorAll('input[id]:not([type=date])').forEach(i => {
+    if (i.value !== i.defaultValue) out[i.id] = i.value;
+  });
+  return out;
+}
+
+function restoreInputs(root, values) {
+  Object.entries(values).forEach(([id, v]) => {
+    const i = root.querySelector('#' + id);
+    if (!i) return;
+    i.value = v;
+    i.dispatchEvent(new Event('input'));
+  });
 }
 
 /* ----------------------------------------------------------
@@ -73,7 +95,7 @@ function attachTodayHandlers() {
     p.showPicker ? p.showPicker() : p.click();
   });
   body.querySelector('#date-picker')?.addEventListener('change', e => {
-    if (e.target.value) { _selectedDate = e.target.value; renderToday(); }
+    if (e.target.value) { _selectedDate = e.target.value; renderToday({ keepTyped: false }); }
   });
 
   body.querySelectorAll('[data-gym]').forEach(t =>
@@ -154,6 +176,7 @@ async function saveWeight() {
   const val = parseFloat(inp?.value);
   if (!val || val < 20 || val > 300) return showToast('Enter a valid weight.', 'error');
   await addEntry({ date: _selectedDate, type: 'bodyweight', kg: val });
+  inp.value = inp.defaultValue;
   showToast('Weight saved.');
   renderToday();
 }
@@ -166,9 +189,11 @@ function parseSteps(text) {
 
 /* One steps entry per day: saving replaces that day's value */
 async function saveSteps() {
-  const n = parseSteps(document.getElementById('steps-input')?.value);
+  const inp = document.getElementById('steps-input');
+  const n = parseSteps(inp?.value);
   if (n === null || n > 150000) return showToast('Enter a valid step count.', 'error');
   await putEntry({ id: `steps-${_selectedDate}`, date: _selectedDate, type: 'steps', steps: n });
+  inp.value = inp.defaultValue;
   showToast(`${n.toLocaleString('en-IE')} steps saved. ${fmtLoad(round1(computeDailyStepsLoad(n)))} load.`);
   renderToday();
 }
@@ -206,7 +231,7 @@ function changeDate(delta) {
   const d = strToDate(_selectedDate);
   d.setDate(d.getDate() + delta);
   const s = dateToStr(d);
-  if (s <= todayStr()) { _selectedDate = s; renderToday(); }
+  if (s <= todayStr()) { _selectedDate = s; renderToday({ keepTyped: false }); }
 }
 
 /* ----------------------------------------------------------
@@ -855,17 +880,16 @@ function openGymCardioModal(existing) {
   let intensity = existing?.intensity || null;
   const { body } = openModal({ title: 'Gym cardio' });
 
-  function render() {
-    const machinePills = act.machines.map(m =>
-      `<button class="pill${machine===m?' selected':''}" data-machine="${m}">${m}</button>`).join('');
-    const intTiles = ['easy','moderate','hard'].map(i => `
-      <button class="tile" data-int="${i}" style="text-align:center;align-items:center;justify-content:center;
-        ${intensity===i ? 'border-color:var(--accent);' : ''}">
-        <div class="tile-label" style="${intensity===i ? 'color:var(--accent);' : ''}">${i.charAt(0).toUpperCase()+i.slice(1)}</div>
-        <div class="tile-sub">RPE ${act.rpe[i]}</div>
-      </button>`).join('');
+  /* Rendered once. Taps only restyle the buttons so typed minutes are never wiped. */
+  const machinePills = act.machines.map(m =>
+    `<button class="pill${machine===m?' selected':''}" data-machine="${m}">${m}</button>`).join('');
+  const intTiles = ['easy','moderate','hard'].map(i => `
+    <button class="tile" data-int="${i}" style="text-align:center;align-items:center;justify-content:center;">
+      <div class="tile-label">${i.charAt(0).toUpperCase()+i.slice(1)}</div>
+      <div class="tile-sub">RPE ${act.rpe[i]}</div>
+    </button>`).join('');
 
-    body.innerHTML = `
+  body.innerHTML = `
       <div style="margin-bottom:14px;">
         <div class="section-label" style="margin-bottom:8px;">Machine</div>
         <div class="pill-group">${machinePills}</div>
@@ -884,24 +908,33 @@ function openGymCardioModal(existing) {
       </div>
       <button class="btn btn-primary btn-full mt-12" id="cardio-save">${existing?'Update':'Log cardio'}</button>`;
 
+  function markSelected() {
     body.querySelectorAll('[data-machine]').forEach(b =>
-      b.addEventListener('click', () => { machine = b.dataset.machine; render(); }));
-    body.querySelectorAll('[data-int]').forEach(b =>
-      b.addEventListener('click', () => { intensity = b.dataset.int; render(); }));
-
-    body.querySelector('#cardio-save').addEventListener('click', async () => {
-      if (!machine)    return showToast('Pick a machine.', 'error');
-      if (!intensity)  return showToast('Pick intensity.', 'error');
-      const minutes = parseInt(body.querySelector('#cardio-min').value);
-      if (!minutes)    return showToast('Enter duration.', 'error');
-      const rpe   = act.rpe[intensity];
-      await saveActivity({ date:_selectedDate, type:'training', subtype:'gymCardio',
-        label:`Gym cardio (${machine}, ${intensity})`, machine, intensity,
-        minutes, rpe, load:calcLoad(minutes,rpe), category:'cardio' }, existing);
-      closeModal(); showToast('Gym cardio logged.'); renderToday();
+      b.classList.toggle('selected', b.dataset.machine === machine));
+    body.querySelectorAll('[data-int]').forEach(b => {
+      const sel = b.dataset.int === intensity;
+      b.style.borderColor = sel ? 'var(--accent)' : '';
+      b.querySelector('.tile-label').style.color = sel ? 'var(--accent)' : '';
     });
   }
-  render();
+  markSelected();
+
+  body.querySelectorAll('[data-machine]').forEach(b =>
+    b.addEventListener('click', () => { machine = b.dataset.machine; markSelected(); }));
+  body.querySelectorAll('[data-int]').forEach(b =>
+    b.addEventListener('click', () => { intensity = b.dataset.int; markSelected(); }));
+
+  body.querySelector('#cardio-save').addEventListener('click', async () => {
+    if (!machine)    return showToast('Pick a machine.', 'error');
+    if (!intensity)  return showToast('Pick intensity.', 'error');
+    const minutes = parseInt(body.querySelector('#cardio-min').value);
+    if (!minutes)    return showToast('Enter duration.', 'error');
+    const rpe   = act.rpe[intensity];
+    await saveActivity({ date:_selectedDate, type:'training', subtype:'gymCardio',
+      label:`Gym cardio (${machine}, ${intensity})`, machine, intensity,
+      minutes, rpe, load:calcLoad(minutes,rpe), category:'cardio' }, existing);
+    closeModal(); showToast('Gym cardio logged.'); renderToday();
+  });
 }
 
 /* ----------------------------------------------------------

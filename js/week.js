@@ -102,6 +102,15 @@ function ratioZoneLabel(ratio) {
   return { green: 'In range', amber: 'Pushing hard', red: 'Spike', coasting: 'Coasting' }[loadRatioStatus(ratio)];
 }
 
+/* A change too small to call better or worse shows as a grey "No change" chip:
+   under 3% of last week, or under 1 for whole-number counts (sessions, points) */
+const NO_CHANGE_PCT = 0.03;
+function isNoChange(diff, prev, whole) {
+  if (whole) return Math.abs(diff) < 1;
+  if (!prev) return Math.abs(diff) < 0.005;
+  return Math.abs(diff / prev) < NO_CHANGE_PCT;
+}
+
 function fmt1(v) { return v % 1 === 0 ? String(v) : v.toFixed(1); }
 
 /* ----------------------------------------------------------
@@ -115,10 +124,10 @@ function buildHeroCard(data, prev) {
 
   let deltaHtml = `<span class="chip chip-none">No last week to compare</span>`;
   if (prev) {
-    const d   = score - prev.weekScore;
-    const dir = d > 0 ? 'up' : d < 0 ? 'down' : 'same';
-    const cls = d > 0 ? 'chip-good' : d < 0 ? 'chip-bad' : 'chip-none';
-    deltaHtml = `<span class="chip ${cls}">${STATUS_ARROW[dir]} ${d > 0 ? '+' : ''}${d} vs last week</span>`;
+    const d = score - prev.weekScore;
+    deltaHtml = isNoChange(d, prev.weekScore, false)
+      ? `<span class="chip chip-none">${STATUS_ARROW.same} No change vs last week</span>`
+      : `<span class="chip ${d > 0 ? 'chip-good' : 'chip-bad'}">${STATUS_ARROW[d > 0 ? 'up' : 'down']} ${d > 0 ? '+' : ''}${d} vs last week</span>`;
   }
 
   const slices = [
@@ -184,9 +193,9 @@ function buildMetricGrid(data, prev) {
       v: d => d.avgHoursInBed, fmt: fmtHours, dfmt: d => `${Math.round(Math.abs(d) * 60)}m` },
     { label: 'Avg wake feeling', cat: 'recovery', dir: 1,
       v: d => d.avgWakeFeeling, fmt: v => v.toFixed(1), unit: '/ 5', dfmt: d => Math.abs(d).toFixed(1) },
-    { label: 'Gym sessions', cat: 'training', dir: 1,
+    { label: 'Gym sessions', cat: 'training', dir: 1, whole: true,
       v: d => d.gymSessions.total },
-    { label: 'Pitch sessions', cat: 'training', dir: 1,
+    { label: 'Pitch sessions', cat: 'training', dir: 1, whole: true,
       v: d => d.pitchSessions.total },
     { label: 'Cardio minutes', cat: 'training', dir: 1,
       v: d => d.cardioMinutes, unit: 'min' },
@@ -194,9 +203,9 @@ function buildMetricGrid(data, prev) {
       v: d => d.avgSteps, fmt: v => v.toLocaleString('en-IE'),
       dfmt: d => Math.round(Math.abs(d)).toLocaleString('en-IE'),
       sub: d => `${d.stepsDaysLogged} of 7 days logged` },
-    { label: 'Takeaway Damage', cat: 'diet', dir: -1,
+    { label: 'Takeaway Damage', cat: 'diet', dir: -1, whole: true,
       v: d => d.takeawayDamage, unit: 'pts' },
-    { label: 'Drinks points', cat: 'diet', dir: -1,
+    { label: 'Drinks points', cat: 'diet', dir: -1, whole: true,
       v: d => d.drinksPoints, unit: 'pts' },
     { label: 'Avg bodyweight', cat: 'body', dir: -1,
       v: d => d.avgWeight, fmt: v => v.toFixed(1), unit: 'kg', dfmt: d => `${Math.abs(d).toFixed(1)} kg` },
@@ -210,19 +219,20 @@ function buildMetricGrid(data, prev) {
     const fmt  = def.fmt  || (v => String(v));
     const dfmt = def.dfmt || (d => fmt1(round1(Math.abs(d))));
 
-    /* Change chip: arrow + amount, coloured better / worse / none */
+    /* Change chip: arrow + amount, coloured better / worse, grey when no real change.
+       Load ratio tiles keep their zone colour; only the chip goes grey. */
     let status = 'none', chip;
     if (has && hasP) {
       const diff = cur - prv;
-      const same = Math.abs(diff) < 0.005;
-      const dir  = same ? 'same' : diff > 0 ? 'up' : 'down';
-      let amount;
-      if (same)                     amount = 'Same';
-      else if (def.pct && prv > 0)  amount = `${Math.round(Math.abs(diff / prv) * 100)}%`;
-      else                          amount = dfmt(diff);
+      const same = isNoChange(diff, prv, def.whole);
       if (def.zone)   status = ratioZone(cur);
       else if (!same) status = (diff > 0) === (def.dir > 0) ? 'good' : 'bad';
-      chip = `<span class="chip chip-${status}">${STATUS_ARROW[dir]} ${amount}</span>`;
+      if (same) {
+        chip = `<span class="chip chip-none">${STATUS_ARROW.same} No change</span>`;
+      } else {
+        const amount = def.pct && prv > 0 ? `${Math.round(Math.abs(diff / prv) * 100)}%` : dfmt(diff);
+        chip = `<span class="chip chip-${status}">${STATUS_ARROW[diff > 0 ? 'up' : 'down']} ${amount}</span>`;
+      }
     } else if (def.zone && has) {
       status = ratioZone(cur);
       chip = `<span class="chip chip-${status}">● ${ratioZoneLabel(cur)}</span>`;
@@ -308,6 +318,7 @@ function buildHowScoresCard() {
 
         <h4>Tile colours</h4>
         <p>Green = better than last week, red = worse, grey = no change or nothing to compare.
+          A change under 3% of last week (or under 1 for sessions and points) counts as no change.
           Lower is better for Takeaway Damage, drinks points and bodyweight. Total load counts as better
           going up while the load ratio is ${lr.amberMax} or under. Load ratio is coloured by zone.</p>
       </div>
