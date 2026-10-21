@@ -16,18 +16,14 @@ async function renderWeek() {
     <span class="text-secondary">Loading...</span></div>`;
 
   try {
-    const [data, prevAll] = await Promise.all([
-      computeWeekData(_weekMonday),
-      computeWeekData(addWeeks(_weekMonday, -1)),
-    ]);
-    /* Only compare against last week if anything was logged in it */
-    const prev = prevAll.allEntries.length > 0 ? prevAll : null;
+    /* Comparisons (prevFinal / prevSamePoint) are null unless last week qualifies */
+    const data = await computeWeekData(_weekMonday);
 
     const frag = document.createDocumentFragment();
     frag.appendChild(buildWeekNav(data));
-    frag.appendChild(buildHeroCard(data, prev));
-    frag.appendChild(buildMetricGrid(data, prev));
-    frag.appendChild(buildDailyChart(data, prevAll));
+    frag.appendChild(buildHeroCard(data));
+    frag.appendChild(buildMetricGrid(data));
+    frag.appendChild(buildDailyChart(data, data.prevWeek));
     frag.appendChild(buildCategoryChart(data));
     if (data.flags.length) frag.appendChild(buildFlagsCard(data));
 
@@ -35,7 +31,7 @@ async function renderWeek() {
     if (daysSince === null || daysSince >= CONFIG.backup.reminderDays) {
       frag.appendChild(buildBackupReminder(daysSince));
     }
-    frag.appendChild(buildHowScoresCard());
+    frag.appendChild(buildHowScoresCard(data));
 
     body.innerHTML = '';
     body.appendChild(frag);
@@ -114,20 +110,23 @@ function isNoChange(diff, prev, whole) {
 function fmt1(v) { return v % 1 === 0 ? String(v) : v.toFixed(1); }
 
 /* ----------------------------------------------------------
-   Hero: Week Score ring + change vs last week + slice bars
+   Hero: Week Score ring + change vs last week + slice bars.
+   Live weeks compare to last week's Live score at the same weekday.
    ---------------------------------------------------------- */
-function buildHeroCard(data, prev) {
+function buildHeroCard(data) {
+  const prev = data.prevSamePoint;
+  const vs   = data.live ? 'vs same point last week' : 'vs last week';
   const score = data.weekScore;
   const band  = scoreBand(score);
   const R = 52, C = 2 * Math.PI * R;
   const dash = (Math.max(0, Math.min(100, score)) / 100) * C;
 
-  let deltaHtml = `<span class="chip chip-none">No last week to compare</span>`;
+  let deltaHtml = `<span class="chip chip-none">No last week</span>`;
   if (prev) {
     const d = score - prev.weekScore;
     deltaHtml = isNoChange(d, prev.weekScore, false)
-      ? `<span class="chip chip-none">${STATUS_ARROW.same} No change vs last week</span>`
-      : `<span class="chip ${d > 0 ? 'chip-good' : 'chip-bad'}">${STATUS_ARROW[d > 0 ? 'up' : 'down']} ${d > 0 ? '+' : ''}${d} vs last week</span>`;
+      ? `<span class="chip chip-none">${STATUS_ARROW.same} No change ${vs}</span>`
+      : `<span class="chip ${d > 0 ? 'chip-good' : 'chip-bad'}">${STATUS_ARROW[d > 0 ? 'up' : 'down']} ${d > 0 ? '+' : ''}${d} ${vs}</span>`;
   }
 
   const slices = [
@@ -139,7 +138,7 @@ function buildHeroCard(data, prev) {
   ].map(({ key, label, col }) => {
     const s   = data.breakdown[key];
     const pct = s.na ? 0 : Math.round((s.pts / s.max) * 100);
-    const val = s.na ? '<span class="slice-na">n/a</span>' : `${fmt1(s.pts)}<span class="slice-max">/${s.max}</span>`;
+    const val = s.na ? `<span class="slice-na">${s.naLabel}</span>` : `${fmt1(s.pts)}<span class="slice-max">/${s.max}</span>`;
     return `
       <div class="slice-row">
         <div class="slice-label"><span class="slice-dot" style="background:${col};"></span>${label}</div>
@@ -165,7 +164,7 @@ function buildHeroCard(data, prev) {
       </div>
       <div class="hero-side">
         <div class="hero-title">Week Score</div>
-        ${data.isComplete ? '' : '<span class="badge badge-blue">In progress</span>'}
+        ${data.live ? '<span class="badge badge-blue">Live</span>' : '<span class="badge">Final</span>'}
         <div style="margin-top:10px;">${deltaHtml}</div>
       </div>
     </div>
@@ -176,19 +175,20 @@ function buildHeroCard(data, prev) {
 /* ----------------------------------------------------------
    Metric tiles (2 per row)
    ---------------------------------------------------------- */
-function buildMetricGrid(data, prev) {
+function buildMetricGrid(data) {
   const ratio = data.ratio;
   /* Total load: higher is better while the ratio is 1.5 or under;
      above that (spike) a drop is the better direction */
   const loadDir = ratio !== null && ratio > CONFIG.loadRatio.amberMax ? -1 : 1;
 
   const defs = [
-    { label: 'Total load', cat: 'training', dir: loadDir, pct: true,
-      v: d => d.totalLoad, fmt: fmt1 },
+    { label: 'Total load', cat: 'training', dir: loadDir, pct: true, samePoint: true,
+      v: d => d.totalLoad, fmt: fmt1, sub: d => d.live ? 'So far this week' : '' },
     { label: 'Load ratio', cat: 'training', zone: true,
       v: d => d.ratio, fmt: v => v.toFixed(2), dfmt: d => Math.abs(d).toFixed(2) },
     { label: 'Recovery score', cat: 'recovery', dir: 1,
-      v: d => d.recoveryScore, unit: '/ 100' },
+      v: d => d.recoveryScore, unit: '/ 100',
+      sub: d => d.recoveryNA ? `Needs 3 nights of sleep (${d.nightsLogged} logged)` : '' },
     { label: 'Avg time in bed', cat: 'recovery', dir: 1,
       v: d => d.avgHoursInBed, fmt: fmtHours, dfmt: d => `${Math.round(Math.abs(d) * 60)}m` },
     { label: 'Avg wake feeling', cat: 'recovery', dir: 1,
@@ -212,6 +212,8 @@ function buildMetricGrid(data, prev) {
   ];
 
   const tiles = defs.map(def => {
+    /* Total load while Live compares to last week at the same weekday */
+    const prev = def.samePoint ? data.prevSamePoint : data.prevFinal;
     const cur  = def.v(data);
     const prv  = prev ? def.v(prev) : null;
     const has  = cur !== null && cur !== undefined;
@@ -236,17 +238,22 @@ function buildMetricGrid(data, prev) {
     } else if (def.zone && has) {
       status = ratioZone(cur);
       chip = `<span class="chip chip-${status}">● ${ratioZoneLabel(cur)}</span>`;
+    } else if (!has && prev) {
+      chip = `<span class="chip chip-none">n/a</span>`;
     } else {
       chip = `<span class="chip chip-none">No last week</span>`;
+    }
+    if (def.samePoint && data.live && has && hasP) {
+      chip += `<div class="mtile-cap">vs same point last week</div>`;
     }
 
     let sub = def.sub ? def.sub(data) : '';
     if (def.zone) {
       sub = has
-        ? ratioZoneLabel(cur)
-        : data.weeksToBaseline > 0 && data.weeksWithLoad > 0
-          ? `Baseline building, ${data.weeksToBaseline} week${data.weeksToBaseline > 1 ? 's' : ''} to go`
-          : 'Needs a previous week';
+        ? (data.live ? `On pace · ${ratioZoneLabel(cur)}` : ratioZoneLabel(cur))
+        : data.weeksToBaseline > 0
+          ? `Baseline building, ${data.weeksToBaseline} more qualifying week${data.weeksToBaseline > 1 ? 's' : ''} needed`
+          : 'Baseline building';
     }
 
     const big = has
@@ -269,9 +276,68 @@ function buildMetricGrid(data, prev) {
 }
 
 /* ----------------------------------------------------------
+   The real numbers behind each slice of this week's score
+   ---------------------------------------------------------- */
+function weekNumbersHtml(d) {
+  const b   = d.breakdown;
+  const pts = s => `${fmt1(s.pts)}/${s.max}`;
+  const lines = [];
+
+  /* Training */
+  if (d.ratio === null) {
+    lines.push(`Training: load ${d.live ? 'so far ' : ''}${fmt1(d.totalLoad)}, baseline building
+      (${d.baselineWeeks} of 2 qualifying weeks), excluded`);
+  } else {
+    lines.push(d.live
+      ? `Training: load so far ${fmt1(d.totalLoad)}, same-days baseline ${fmt1(d.baseline)}
+         (${d.baselineWeeks} week${d.baselineWeeks > 1 ? 's' : ''}, Mon to ${DAY_SHORT[strToDate(d.asOf).getDay()]}),
+         pace ratio ${d.ratio.toFixed(2)}, ${pts(b.training)}`
+      : `Training: load ${fmt1(d.totalLoad)}, baseline ${fmt1(d.baseline)}
+         (${d.baselineWeeks} week${d.baselineWeeks > 1 ? 's' : ''}), ratio ${d.ratio.toFixed(2)}, ${pts(b.training)}`);
+  }
+
+  /* Recovery */
+  if (d.recoveryNA) {
+    lines.push(`Recovery: ${d.nightsLogged} night${d.nightsLogged === 1 ? '' : 's'} of sleep logged
+      (needs 3), n/a, excluded`);
+  } else {
+    lines.push(`Recovery: ${d.nightsLogged} nights, avg ${d.avgHoursInBed !== null ? fmtHours(d.avgHoursInBed) : '--'}
+      in bed (${fmt1(d.recSleepPts)}), wake ${d.avgWakeFeeling !== null ? d.avgWakeFeeling.toFixed(1) : '--'}
+      (${fmt1(d.recWakePts)}), sauna ${d.saunaMin}m, cold ${d.coldSessions}, stretch ${d.stretchMin}m
+      (${fmt1(d.recWorkPts)}), score ${d.recoveryScore}, ${pts(b.recovery)}`);
+  }
+
+  /* Diet */
+  lines.push(`Food: Takeaway Damage ${d.takeawayDamage}, ${pts(b.dietFood)}`);
+  lines.push(`Drinks: ${d.drinksPoints} pts, ${pts(b.dietDrinks)}`);
+
+  /* Body */
+  if (d.bodyStatus === 'pending') {
+    lines.push('Body: no weigh-in yet this week, Pending, excluded');
+  } else if (d.bodyStatus === 'na') {
+    lines.push(`Body: avg ${d.avgWeight !== null ? d.avgWeight.toFixed(1) + ' kg' : '--'},
+      nothing to compare against, n/a, excluded`);
+  } else if (d.avgWeight === null) {
+    lines.push(`Body: no weigh-ins this week, ${pts(b.body)}`);
+  } else {
+    const ch = d.weightChange;
+    lines.push(`Body: avg ${d.avgWeight.toFixed(1)} kg, change ${ch > 0 ? '+' : ''}${ch.toFixed(2)} kg
+      ${d.bodyLowData ? '(2-week rolling, thin data) ' : ''}(${d.bodyLabel}), ${pts(b.body)}`);
+  }
+
+  /* Total */
+  lines.push(d.scoreMax === 0
+    ? 'Week Score: no slices to score yet'
+    : `Week Score: ${fmt1(d.scoreRaw)} of ${d.scoreMax} available points${d.scoreMax < 100 ? ', scaled to 100' : ''}
+       = ${d.weekScore}`);
+
+  return lines.map(l => `<li>${l}</li>`).join('');
+}
+
+/* ----------------------------------------------------------
    How scores work (collapsed by default)
    ---------------------------------------------------------- */
-function buildHowScoresCard() {
+function buildHowScoresCard(data) {
   const st = CONFIG.steps, lr = CONFIG.loadRatio, ws = CONFIG.weekScore;
   const ds = CONFIG.dietScore, rs = CONFIG.recoveryScore, rc = CONFIG.recovery;
   const bw = CONFIG.bodyWeight;
@@ -284,6 +350,19 @@ function buildHowScoresCard() {
     <details>
       <summary>How scores work</summary>
       <div class="how-body">
+        <h4>${data.live ? 'This week so far (Live)' : 'This week (Final)'}</h4>
+        <ul class="how-numbers">${weekNumbersHtml(data)}</ul>
+
+        <h4>Live and Final</h4>
+        <p>While a week is in progress its score is Live: training is judged on pace (same days only),
+          and the score is compared to last week's Live score at the same weekday. Once Sunday is over the
+          score is Final and uses the whole week. Every week, past and present, is recalculated from your raw logs.</p>
+
+        <h4>Enough data</h4>
+        <p>Last week is only used for comparisons if it has at least 3 days with something logged, otherwise
+          tiles show "No last week". The recovery score needs at least 3 nights of sleep logged, otherwise it is n/a.
+          The load ratio baseline uses only qualifying weeks among the previous 4 and needs at least 2 of them.</p>
+
         <h4>Training load</h4>
         <p>Load = minutes x RPE / 10.</p>
 
@@ -294,7 +373,8 @@ function buildHowScoresCard() {
           Days with no steps logged count as 0. Avg daily steps uses only the days logged.</p>
 
         <h4>Load ratio</h4>
-        <p>This week's total load / average total load of the previous 4 weeks.
+        <p>This week's total load / average total load of the qualifying weeks among the previous 4.
+          While Live, both sides only count Monday to the same weekday (on pace).
           ${lr.greenMin} to ${lr.greenMax} green (building), ${lr.greenMax} to ${lr.amberMax} amber (pushing hard),
           under ${lr.greenMin} coasting, over ${lr.amberMax} red (spike).</p>
 
@@ -313,11 +393,14 @@ function buildHowScoresCard() {
           Drinks ${ws.dietDrinks}: ${ds.drinksGreenMax} or under = full, falls to 0 at ${ds.drinksRedMin}.<br>
           Body ${ws.body}: weekly weight change. Down ${bw.targetLossMin} to ${bw.targetLossMax} kg = 10,
           down more = 6, down 0 to ${bw.targetLossMin} = 6, up 0 to ${bw.targetLossMin} = 3, up more = 0.<br>
-          A slice that is n/a is left out and the score is scaled to 100.</p>
+          Body is Pending while a Live week has no weigh-in yet, n/a with nothing to compare against,
+          and 0 only for a completed week with no weigh-ins.<br>
+          A slice that is n/a, Pending or Building is left out and the score is scaled to 100.</p>
         <p>Score colour: 80+ green, 60 to 79 amber, under 60 red.</p>
 
         <h4>Tile colours</h4>
         <p>Green = better than last week, red = worse, grey = no change or nothing to compare.
+          While Live, Total load is compared to last week at the same weekday; other tiles use last week's Final.
           A change under 3% of last week (or under 1 for sessions and points) counts as no change.
           Lower is better for Takeaway Damage, drinks points and bodyweight. Total load counts as better
           going up while the load ratio is ${lr.amberMax} or under. Load ratio is coloured by zone.</p>

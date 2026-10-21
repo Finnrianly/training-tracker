@@ -7,7 +7,8 @@
      Load             = minutes × RPE ÷ 10
      Steps load (day) = max(0, steps - 6 000) ÷ 1 000 × (14 ÷ 7)
                         (one entry per day; 10 000 every day = 56 a week)
-     Load ratio       = thisWeekLoad ÷ avg(prev 4 weeks total loads)
+     Load ratio       = this week's load ÷ avg load of qualifying weeks in the
+                        previous 4 (same days only while the week is Live)
      Recovery score   = sleep pts (65) + wake pts (20) + work pts (15)
      Week Score       = training (30) + recovery (30) + food (22)
                         + drinks (8) + body (10), scaled when a slice is n/a
@@ -58,13 +59,6 @@ function weekTotalLoad(entries) {
 /* ----------------------------------------------------------
    Load ratio and its status
    ---------------------------------------------------------- */
-function computeLoadRatio(thisLoad, prevLoads) {
-  /* prevLoads: array of up to 4 previous weekly total loads (oldest last) */
-  const valid = prevLoads.filter(l => l > 0);
-  if (valid.length === 0) return null;
-  return round2(thisLoad / avg(valid));
-}
-
 function loadRatioStatus(ratio) {
   if (ratio === null) return 'none';
   const c = CONFIG.loadRatio;
@@ -352,30 +346,47 @@ function findHeavyDrinkWakeLinks(weekEntries, weekSleepEntries) {
 }
 
 /* ----------------------------------------------------------
-   Main async entry point
-   Returns a full week-data object for use by the Week and History screens.
-   Pass mondayStr = "YYYY-MM-DD" of the week's Monday.
+   Data sufficiency
    ---------------------------------------------------------- */
-async function computeWeekData(mondayStr) {
+const MIN_LOG_DAYS       = 3;  /* a week needs 3+ days with any log to be compared against */
+const MIN_SLEEP_NIGHTS   = 3;  /* recovery score needs 3+ nights of sleep, else n/a */
+const MIN_BASELINE_WEEKS = 2;  /* load ratio needs 2+ qualifying weeks in the previous 4 */
+
+/* An entry that actually records something (an all-zero recovery row does not) */
+function isRealLog(e) {
+  if (e.type === 'recovery') return (e.saunaMin || 0) + (e.coldSessions || 0) + (e.stretchMin || 0) > 0;
+  if (e.type === 'steps')    return typeof e.steps === 'number';
+  return true;
+}
+
+function isQualifyingWeek(weekEntries) {
+  return new Set(weekEntries.filter(isRealLog).map(e => e.date)).size >= MIN_LOG_DAYS;
+}
+
+function entriesBetween(entries, from, to) {
+  return entries.filter(e => e.date >= from && e.date <= to);
+}
+
+/* ----------------------------------------------------------
+   Score one week from raw entries. Nothing is ever stored:
+   Week and History both call this, so they always agree.
+
+   entries: must also cover the 4 weeks before mondayStr.
+   asOf:    last date counted (inclusive).
+   live:    true for a week in progress, or a past week scored
+            "as at" the same weekday. Live weeks compare like for
+            like (same days) and a missing weigh-in is Pending.
+   ---------------------------------------------------------- */
+function scoreWeek(mondayStr, entries, { asOf, live }) {
   const sundayStr = weekSundayStr(mondayStr);
+  const dayIdx    = Math.round((strToDate(asOf) - strToDate(mondayStr)) / 86400000);
+  const w         = entriesBetween(entries, mondayStr, asOf);
 
-  /* Load 5 weeks of data: this week + 4 previous */
-  const farMonday = addWeeks(mondayStr, -4);
-  const allEntries = await getEntriesByDateRange(farMonday, sundayStr);
-
-  /* Split into per-week buckets, weeks[0] = this week ... weeks[4] = 4 weeks ago */
-  const weeks = Array.from({ length: 5 }, (_, i) => {
-    const wMon = addWeeks(mondayStr, -i);
-    const wSun = weekSundayStr(wMon);
-    return {
-      monday:  wMon,
-      sunday:  wSun,
-      entries: allEntries.filter(e => e.date >= wMon && e.date <= wSun),
-    };
+  /* prevWeeks[0] = last week ... [3] = 4 weeks ago, always full weeks */
+  const prevWeeks = [1, 2, 3, 4].map(i => {
+    const m = addWeeks(mondayStr, -i);
+    return { monday: m, sameDay: addWeeks(asOf, -i), entries: entriesBetween(entries, m, weekSundayStr(m)) };
   });
-
-  const thisWeek = weeks[0];
-  const w        = thisWeek.entries;
 
   /* -- Loads -- */
   const trainingLoad = round1(weekTrainingLoad(w));
@@ -386,12 +397,17 @@ async function computeWeekData(mondayStr) {
   const totalLoad    = round1(trainingLoad + stepsLoad);
   const dailyLoads   = weekDays(mondayStr).map(d => dayTotalLoad(w, d));
 
-  /* -- Load ratio -- */
-  const prevLoads = weeks.slice(1).map(wk => weekTotalLoad(wk.entries));
-  const ratio     = computeLoadRatio(totalLoad, prevLoads);
+  /* -- Load ratio: baseline = qualifying weeks among the previous 4.
+        Live: each baseline week's load over the same days (Mon to same weekday). -- */
+  const baseLoads = prevWeeks
+    .filter(pw => isQualifyingWeek(pw.entries))
+    .map(pw => weekTotalLoad(live ? entriesBetween(pw.entries, pw.monday, pw.sameDay) : pw.entries));
+  const baseline  = baseLoads.length >= MIN_BASELINE_WEEKS && avg(baseLoads) > 0
+    ? round1(avg(baseLoads)) : null;
+  const ratio     = baseline ? round2(totalLoad / baseline) : null;
   const ratioStat = loadRatioStatus(ratio);
-  const weeksWithLoad = prevLoads.filter(l => l > 0).length;
-  const weeksToBaseline = Math.max(0, 4 - weeksWithLoad);
+  const baselineWeeks   = baseLoads.length;
+  const weeksToBaseline = Math.max(0, MIN_BASELINE_WEEKS - baselineWeeks);
 
   /* -- Sleep -- */
   const sleepEntries  = w.filter(e => e.type === 'sleep');
@@ -402,23 +418,30 @@ async function computeWeekData(mondayStr) {
   const avgWakeFeel   = wakeArr.length > 0 ? round2(avg(wakeArr)) : null;
   const nightsUnder7_5 = hoursArr.filter(h => h < CONFIG.sleep.lowHoursThreshold).length;
 
-  /* -- Recovery work -- */
+  /* -- Recovery: n/a (not a low score) under 3 nights of sleep -- */
   const recEntries = w.filter(e => e.type === 'recovery');
   const rec        = computeRecoveryScore(sleepEntries, recEntries);
+  const recNA      = nightsLogged < MIN_SLEEP_NIGHTS;
 
   /* -- Diet -- */
   const takeawayDamage = weekTakeawayDamage(w);
   const drinksPoints   = weekDrinksPoints(w);
   const heavyDrinkNights = findHeavyDrinkWakeLinks(w, sleepEntries);
 
-  /* -- Body -- */
-  const weightArrays = weeks.slice(0, 4).map(wk =>
-    wk.entries.filter(e => e.type === 'bodyweight').map(e => e.kg));
-  const bodyResult  = computeBodySlice(weightArrays);
+  /* -- Body: a Live week with no weigh-in yet is Pending; only a
+        completed week with no weigh-ins scores 0 -- */
+  const weightArrays = [w, ...prevWeeks.slice(0, 3).map(pw => pw.entries)]
+    .map(es => es.filter(e => e.type === 'bodyweight').map(e => e.kg));
+  let bodyResult;
+  if (live && weightArrays[0].length === 0) {
+    bodyResult = { points: null, label: null, change: null, lowData: false, na: true, status: 'pending' };
+  } else {
+    bodyResult = computeBodySlice(weightArrays);
+    bodyResult.status = bodyResult.na ? 'na' : null;
+  }
   const avgWeight   = weightArrays[0].length > 0 ? round2(avg(weightArrays[0])) : null;
   const prevAvgWt   = weightArrays[1].length > 0 ? round2(avg(weightArrays[1])) : null;
   const prevPrevAvgWt = weightArrays[2].length > 0 ? round2(avg(weightArrays[2])) : null;
-  /* Weight up 2 weeks running */
   const weightUpTwoWeeks = (bodyResult.change !== null && bodyResult.change > 0 &&
     prevAvgWt !== null && prevPrevAvgWt !== null && prevAvgWt > prevPrevAvgWt);
 
@@ -427,83 +450,106 @@ async function computeWeekData(mondayStr) {
   const pitchSessions = weekPitchSessions(w);
   const cardioMinutes = weekCardioMinutes(w);
 
-  /* -- Week score parts -- */
+  /* -- Week score parts (an n/a slice is left out and the score scaled) -- */
+  const ws       = CONFIG.weekScore;
   const trainPts = trainingSlicePoints(ratio);
-  const recPts   = Math.round(rec.score * (CONFIG.weekScore.recovery / 100));
+  const recPts   = Math.round(rec.score * (ws.recovery / 100));
   const foodPts  = dietFoodPoints(takeawayDamage);
   const drinkPts = dietDrinksPoints(drinksPoints);
   const bPts     = bodyResult.points;
 
   const breakdown = {
-    training:   { pts: trainPts ?? 0, max: CONFIG.weekScore.training,   na: trainPts === null },
-    recovery:   { pts: recPts,        max: CONFIG.weekScore.recovery,   na: false },
-    dietFood:   { pts: foodPts,       max: CONFIG.weekScore.dietFood,   na: false },
-    dietDrinks: { pts: drinkPts,      max: CONFIG.weekScore.dietDrinks, na: false },
-    body:       { pts: bPts ?? 0,     max: CONFIG.weekScore.body,       na: bodyResult.na },
+    training:   { pts: trainPts ?? 0, max: ws.training,   na: trainPts === null, naLabel: 'Building' },
+    recovery:   { pts: recNA ? 0 : recPts, max: ws.recovery, na: recNA,          naLabel: 'n/a' },
+    dietFood:   { pts: foodPts,       max: ws.dietFood,   na: false },
+    dietDrinks: { pts: drinkPts,      max: ws.dietDrinks, na: false },
+    body:       { pts: bPts ?? 0,     max: ws.body,       na: bodyResult.na,
+                  naLabel: bodyResult.status === 'pending' ? 'Pending' : 'n/a' },
   };
 
   const weekScore = computeWeekScore(Object.values(breakdown));
+  const active    = Object.values(breakdown).filter(p => !p.na);
+  const scoreRaw  = round1(active.reduce((s, p) => s + Math.max(0, p.pts), 0));
+  const scoreMax  = active.reduce((s, p) => s + p.max, 0);
 
-  /* -- Previous week summary (for comparison arrows + flags) -- */
-  const prevW = weeks[1].entries;
-  const prevData = weeks[1].entries.length > 0 ? {
-    totalLoad:       weekTotalLoad(prevW),
-    cardioMinutes:   weekCardioMinutes(prevW),
-    takeawayDamage:  weekTakeawayDamage(prevW),
-    drinksPoints:    weekDrinksPoints(prevW),
-    avgWeight:       weightArrays[1].length > 0 ? round2(avg(weightArrays[1])) : null,
-    avgHoursInBed:   (() => {
-      const sl = prevW.filter(e => e.type === 'sleep' && e.hoursInBed > 0).map(e => e.hoursInBed);
-      return sl.length ? round2(avg(sl)) : null;
-    })(),
-    recoveryScore: computeRecoveryScore(
-      prevW.filter(e => e.type === 'sleep'),
-      prevW.filter(e => e.type === 'recovery')
-    ).score,
+  /* -- Previous week summary for flags, only if it qualifies -- */
+  const prevW = prevWeeks[0].entries;
+  const prevData = isQualifyingWeek(prevW) ? {
+    cardioMinutes:  weekCardioMinutes(prevW),
+    takeawayDamage: weekTakeawayDamage(prevW),
   } : null;
 
   /* -- "Lowest in 4 weeks" flag check -- */
-  const prev4Damages = weeks.slice(1).map(wk => weekTakeawayDamage(wk.entries));
+  const prev4Damages = prevWeeks.map(pw => weekTakeawayDamage(pw.entries));
   const takeawayLowestIn4Weeks = prev4Damages.some(d => d > 0) &&
     prev4Damages.every(d => takeawayDamage <= d);
 
   /* -- Flags -- */
-  const flagData = {
+  const flags = computeFlags({
     ratio, nightsUnder7_5, heavyDrinkNights,
     cardioMinutes, takeawayDamage,
-    bodyLabel:       bodyResult.label,
-    bodyChange:      bodyResult.change,
+    bodyLabel:  bodyResult.label,
+    bodyChange: bodyResult.change,
     weightUpTwoWeeks,
     takeawayLowestIn4Weeks,
-  };
-  const flags = computeFlags(flagData, prevData);
-
-  /* -- Is the week complete? -- */
-  const isComplete = todayStr() > sundayStr;
+  }, prevData);
 
   return {
-    mondayStr, sundayStr, isComplete,
+    mondayStr, sundayStr, asOf, live, isComplete: !live, daysCounted: dayIdx + 1,
     trainingLoad, stepsLoad, totalLoad, avgSteps, stepsDaysLogged, dailyLoads,
-    ratio, ratioStatus: ratioStat, weeksToBaseline, weeksWithLoad,
+    ratio, ratioStatus: ratioStat, baseline, baselineWeeks, weeksToBaseline,
     gymSessions, pitchSessions, cardioMinutes,
     sleepEntries, nightsLogged, avgHoursInBed, avgWakeFeeling: avgWakeFeel, nightsUnder7_5,
     saunaMin:     rec.totalSauna,
     coldSessions: rec.totalCold,
     stretchMin:   rec.totalStretch,
-    recoveryScore: rec.score,
+    recoveryNA:   recNA,
+    recoveryScore: recNA ? null : rec.score,
     recSleepPts:  rec.sleepPts,
     recWakePts:   rec.wakePts,
     recWorkPts:   rec.workPts,
     takeawayDamage, drinksPoints, heavyDrinkNights,
     avgWeight, prevAvgWt, weightChange: bodyResult.change,
     bodyLabel: bodyResult.label, bodySlicePoints: bPts, bodyNA: bodyResult.na,
-    bodyLowData: bodyResult.lowData, weightUpTwoWeeks,
-    weekScore, breakdown, prevData,
+    bodyStatus: bodyResult.status, bodyLowData: bodyResult.lowData, weightUpTwoWeeks,
+    weekScore, scoreRaw, scoreMax, breakdown, prevData,
     flags,
     /* Raw entries for drill-down */
     allEntries: w,
-    prevWeekEntries: weeks[1].entries,
   };
+}
+
+/* Score a week as it stands today: Live while in progress, Final once Sunday is over */
+function scoreWeekToDate(mondayStr, entries) {
+  const sundayStr = weekSundayStr(mondayStr);
+  const today = todayStr();
+  const live  = today <= sundayStr;
+  return scoreWeek(mondayStr, entries, { asOf: live ? today : sundayStr, live });
+}
+
+/* ----------------------------------------------------------
+   Main async entry point (Week screen)
+   Adds last week for comparisons:
+     prevWeek      -- last week in full, always (daily chart)
+     prevFinal     -- last week's Final, only if it qualifies
+     prevSamePoint -- while this week is Live: last week Live at the
+                      same weekday; otherwise its Final. Only if it qualifies.
+   ---------------------------------------------------------- */
+async function computeWeekData(mondayStr) {
+  /* This week + 5 previous: last week's own baseline needs the 4 weeks before it */
+  const entries = await getEntriesByDateRange(addWeeks(mondayStr, -5), weekSundayStr(mondayStr));
+
+  const data     = scoreWeekToDate(mondayStr, entries);
+  const prevMon  = addWeeks(mondayStr, -1);
+  const prevWeek = scoreWeek(prevMon, entries, { asOf: weekSundayStr(prevMon), live: false });
+  const prevOk   = isQualifyingWeek(prevWeek.allEntries);
+
+  data.prevWeek      = prevWeek;
+  data.prevFinal     = prevOk ? prevWeek : null;
+  data.prevSamePoint = !prevOk ? null
+    : data.live ? scoreWeek(prevMon, entries, { asOf: addWeeks(data.asOf, -1), live: true })
+    : prevWeek;
+  return data;
 }
 
 /* ----------------------------------------------------------

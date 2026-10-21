@@ -1166,6 +1166,7 @@ h1, h2, h3 {
   margin-top: 2px;
 }
 .mtile-chip { margin-top: auto; padding-top: 8px; }
+.mtile-cap  { margin-top: 3px; font-size: 10px; font-weight: 600; color: var(--text-secondary); }
 
 /* How scores work */
 .how-scores { padding: 0; }
@@ -1204,3 +1205,6 @@ h1, h2, h3 {
 }
 .how-body h4:first-child { margin-top: 0; }
 .how-body p { margin: 0 0 6px; }
+.how-numbers { margin: 0 0 6px; padding-left: 16px; }
+.how-numbers li { margin-bottom: 4px; }
+

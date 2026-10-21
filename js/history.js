@@ -83,64 +83,21 @@ function computeAllWeekSummaries(allEntries) {
     .reverse(); /* newest first */
 }
 
+/* Same scorer as the Week screen, recomputed from raw logs every time */
 function weekSummaryFromEntries(monday, allEntries) {
-  const sunday = weekSundayStr(monday);
-  const w = allEntries.filter(e => e.date >= monday && e.date <= sunday);
-
-  const trainingLoad = round1(weekTrainingLoad(w));
-  const stepsLoad    = round1(weekStepsLoad(w));
-  const totalLoad    = round1(trainingLoad + stepsLoad);
-
-  /* Load ratio from previous 4 weeks */
-  const prevLoads = [1,2,3,4].map(i => {
-    const wM = addWeeks(monday, -i), wS = weekSundayStr(wM);
-    return weekTotalLoad(allEntries.filter(e => e.date >= wM && e.date <= wS));
-  });
-  const ratio = computeLoadRatio(totalLoad, prevLoads);
-
-  /* Sleep */
-  const sleepE  = w.filter(e => e.type === 'sleep');
-  const hoursA  = sleepE.filter(e => e.hoursInBed > 0).map(e => e.hoursInBed);
-  const avgHours = hoursA.length ? round2(avg(hoursA)) : null;
-
-  /* Recovery */
-  const rec = computeRecoveryScore(sleepE, w.filter(e => e.type === 'recovery'));
-
-  /* Diet */
-  const takeawayDmg = weekTakeawayDamage(w);
-  const drinksPts   = weekDrinksPoints(w);
-
-  /* Body */
-  const wtArrays = [0,1,2,3].map(i => {
-    const wM = addWeeks(monday, -i), wS = weekSundayStr(wM);
-    return allEntries.filter(e => e.date >= wM && e.date <= wS && e.type === 'bodyweight').map(e => e.kg);
-  });
-  const bodyRes  = computeBodySlice(wtArrays);
-  const avgWt    = wtArrays[0].length ? round2(avg(wtArrays[0])) : null;
-
-  /* Score */
-  const trainPts = trainingSlicePoints(ratio);
-  const breakdown = {
-    training:   { pts: trainPts ?? 0, max: 30, na: trainPts === null },
-    recovery:   { pts: Math.round(rec.score * 0.3), max: 30, na: false },
-    dietFood:   { pts: dietFoodPoints(takeawayDmg),  max: 22, na: false },
-    dietDrinks: { pts: dietDrinksPoints(drinksPts),  max: 8,  na: false },
-    body:       { pts: bodyRes.points ?? 0,          max: 10, na: bodyRes.na },
-  };
-  const weekScore  = computeWeekScore(Object.values(breakdown));
-  const isComplete = todayStr() > sunday;
-
+  const d = scoreWeekToDate(monday, allEntries);
   return {
-    monday, sunday, isComplete, hasData: w.length > 0,
-    totalLoad, ratio, ratioStatus: loadRatioStatus(ratio),
-    avgHoursInBed: avgHours,
-    recoveryScore: rec.score,
-    takeawayDamage: takeawayDmg,
-    drinksPoints: drinksPts,
-    avgWeight: avgWt,
-    weekScore, breakdown,
-    gymSessions: weekGymSessions(w).total,
-    cardioMinutes: weekCardioMinutes(w),
+    monday, sunday: d.sundayStr, live: d.live, isComplete: d.isComplete,
+    hasData: d.allEntries.length > 0,
+    totalLoad: d.totalLoad, ratio: d.ratio, ratioStatus: d.ratioStatus,
+    avgHoursInBed: d.avgHoursInBed,
+    recoveryScore: d.recoveryScore,
+    takeawayDamage: d.takeawayDamage,
+    drinksPoints: d.drinksPoints,
+    avgWeight: d.avgWeight,
+    weekScore: d.weekScore, breakdown: d.breakdown,
+    gymSessions: d.gymSessions.total,
+    cardioMinutes: d.cardioMinutes,
   };
 }
 
@@ -167,7 +124,7 @@ function buildWeeksView(weeks) {
       ws.totalLoad ? `Load ${ws.totalLoad}` : null,
       ws.ratio !== null ? `<span style="color:${ratioCol};">Ratio ${ws.ratio}</span>` : null,
       ws.avgHoursInBed ? `Sleep ${fmtHours(ws.avgHoursInBed)}` : null,
-      `Recovery ${ws.recoveryScore}`,
+      `Recovery ${ws.recoveryScore ?? 'n/a'}`,
       ws.takeawayDamage ? `Takeaway ${ws.takeawayDamage}` : null,
       ws.drinksPoints ? `Drinks ${ws.drinksPoints}` : null,
       ws.avgWeight ? `${ws.avgWeight} kg` : null,
@@ -179,7 +136,9 @@ function buildWeeksView(weeks) {
         <div style="width:100%;display:flex;align-items:center;justify-content:space-between;">
           <div>
             <div style="font-size:14px;font-weight:700;color:var(--text);">${label}</div>
-            ${!ws.isComplete ? '<span class="badge badge-blue" style="font-size:10px;">In progress</span>' : ''}
+            ${ws.live
+              ? '<span class="badge badge-blue" style="font-size:10px;">Live</span>'
+              : '<span style="font-size:10px;font-weight:700;color:var(--text-secondary);">Final</span>'}
           </div>
           <div style="font-family:var(--font-mono);font-size:20px;font-weight:700;color:${scoreColor};">${ws.weekScore}</div>
         </div>
@@ -204,7 +163,7 @@ function buildMonthsView(weeks) {
     const stats = [
       `Avg load ${m.avgLoad}`,
       m.avgSleep ? `Sleep ${fmtHours(m.avgSleep)}` : null,
-      `Recovery ${m.avgRecovery}`,
+      m.avgRecovery !== null ? `Recovery ${m.avgRecovery}` : null,
       `Gym ${m.totalGym}`,
       m.totalCardio ? `Cardio ${m.totalCardio}min` : null,
       m.totalTakeaway ? `Takeaway ${m.totalTakeaway}` : null,
@@ -260,7 +219,9 @@ function groupByMonth(weeks) {
       avgSleep:      ws.some(w => w.avgHoursInBed)
                        ? round2(avg(ws.filter(w => w.avgHoursInBed).map(w => w.avgHoursInBed)))
                        : null,
-      avgRecovery:   Math.round(avg(ws.map(w => w.recoveryScore))),
+      avgRecovery:   ws.some(w => w.recoveryScore !== null)
+                       ? Math.round(avg(ws.filter(w => w.recoveryScore !== null).map(w => w.recoveryScore)))
+                       : null,
       totalTakeaway: ws.reduce((s, w) => s + w.takeawayDamage, 0),
       totalDrinks:   ws.reduce((s, w) => s + w.drinksPoints, 0),
       totalGym:      ws.reduce((s, w) => s + w.gymSessions, 0),
