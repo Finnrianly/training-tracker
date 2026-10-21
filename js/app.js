@@ -17,6 +17,8 @@ function showScreen(name) {
     t.classList.toggle('active', active);
     t.setAttribute('aria-selected', active);
   });
+  document.querySelectorAll('[data-open-settings]').forEach(b =>
+    b.classList.toggle('active', name === 'settings'));
   /* Run screen-specific render if registered */
   if (typeof SCREEN_RENDERERS === 'object' && SCREEN_RENDERERS[name]) {
     SCREEN_RENDERERS[name]();
@@ -26,6 +28,10 @@ function showScreen(name) {
 tabs.forEach(tab => {
   tab.addEventListener('click', () => showScreen(tab.dataset.screen));
 });
+
+/* Settings lives behind the gear in every screen header */
+document.querySelectorAll('[data-open-settings]').forEach(b =>
+  b.addEventListener('click', () => showScreen('settings')));
 
 /* ----------------------------------------------------------
    Screen renderer registry (populated by each screen module)

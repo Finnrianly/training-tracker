@@ -217,6 +217,31 @@ async function saveEntries(entries) {
 }
 
 /* ----------------------------------------------------------
+   Goals (definitions only; progress is computed from entries).
+   The first load seeds the Christmas gym goal; once the list
+   exists, deleting that goal keeps it deleted.
+   ---------------------------------------------------------- */
+const GOALS_KEY = 'tt_goals';
+
+function loadGoals() {
+  try {
+    const raw = localStorage.getItem(GOALS_KEY);
+    if (raw !== null) return JSON.parse(raw);
+  } catch { /* fall through to the seed */ }
+  const seed = [{
+    id: 'goal-xmas-gym', name: '35 gym sessions by Christmas', kind: 'deadline',
+    metric: { key: 'sessions', sessionTypes: ['fullBody', 'accessory', 'abs'] },
+    target: 35, start: '2026-10-16', end: '2026-12-25',
+  }];
+  saveGoals(seed);
+  return seed;
+}
+
+function saveGoals(goals) {
+  localStorage.setItem(GOALS_KEY, JSON.stringify(goals));
+}
+
+/* ----------------------------------------------------------
    Export (download JSON file)
    ---------------------------------------------------------- */
 async function exportData() {
@@ -227,6 +252,7 @@ async function exportData() {
     exported: new Date().toISOString(),
     entries,
     settings: JSON.parse(settings),
+    goals:    loadGoals(),
   };
 
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -279,6 +305,9 @@ async function importData(jsonString) {
   if (payload.settings) {
     localStorage.setItem('tt_config', JSON.stringify(payload.settings));
   }
+
+  /* Goals (older backups have none: keep the current list) */
+  if (Array.isArray(payload.goals)) saveGoals(payload.goals);
 
   /* A restored backup may predate the new match defaults: check it again */
   localStorage.removeItem('tt_cfg_match_v2');

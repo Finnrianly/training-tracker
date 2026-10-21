@@ -1214,3 +1214,68 @@ h1, h2, h3 {
 .mig-table td { padding: 5px 0; border-top: 1px solid var(--card-border); }
 .mig-table th:not(:first-child), .mig-table td:not(:first-child) { text-align: right; }
 
+/* ============================================================
+   Header gear (Settings)
+   ============================================================ */
+.header-gear { color: var(--text-secondary); }
+.header-gear.active { color: var(--accent); }
+
+/* ============================================================
+   Progress: weight chart
+   ============================================================ */
+.wchart { width: 100%; height: auto; display: block; overflow: visible; }
+.wc-grid { stroke: #ECEEF1; stroke-width: 1; }
+.wc-ylab, .wc-xlab { font-size: 10px; fill: var(--text-secondary); font-family: var(--font-mono); }
+.wc-ylab { text-anchor: end; }
+.wc-dot { fill: var(--accent); }
+.wc-hit { fill: transparent; cursor: pointer; }
+.wc-avg { fill: none; stroke: #0E9F9A; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.wc-goal { stroke: var(--dash-good); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.wc-goal-lab { font-size: 10px; font-weight: 700; fill: var(--dash-good); }
+.wchart-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--text-secondary); }
+.wchart-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.wchart-legend i { display: inline-block; }
+.lg-dot  { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.lg-line { width: 14px; height: 3px; border-radius: 2px; background: #0E9F9A; }
+.lg-dash { width: 14px; border-top: 2px dashed var(--dash-good); }
+
+/* ============================================================
+   Progress: goals
+   ============================================================ */
+.goal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.goal-name { font-size: 15px; font-weight: 800; color: var(--text); overflow-wrap: anywhere; }
+.goal-sub  { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.goal-period { font-size: 11px; font-weight: 700; color: var(--text-secondary); margin-top: 10px;
+  text-transform: uppercase; letter-spacing: .05em; }
+.goal-bar  { height: 8px; background: #ECEEF1; border-radius: 4px; overflow: hidden; margin-top: 10px; }
+.goal-fill { height: 100%; border-radius: 4px; background: #A3A9B3; transition: width .4s; }
+.fill-good { background: var(--dash-good); }
+.fill-warn { background: var(--dash-warn); }
+.fill-bad  { background: var(--dash-bad); }
+.goal-line { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 8px; line-height: 1.4; }
+.goal-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.goal-stats div { background: var(--bg); border-radius: 10px; padding: 8px; text-align: center; min-width: 0; }
+.goal-stats b { display: block; font-size: 15px; }
+.goal-stats span { font-size: 10px; font-weight: 600; color: var(--text-secondary); }
+.goal-note { font-size: 12px; color: var(--text-secondary); margin-top: 8px; }
+.goal-warn { color: #B07A0C; font-weight: 700; }
+.goal-hist { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  margin-top: 10px; font-size: 12px; }
+.goal-dots { display: flex; gap: 4px; flex-wrap: wrap; }
+.goal-dot  { width: 10px; height: 10px; border-radius: 50%; }
+.goal-dot.hit  { background: var(--dash-good); }
+.goal-dot.miss { background: var(--dash-bad); }
+.goal-streak { color: var(--text-secondary); font-weight: 600; }
+.goal-actions { display: flex; align-items: center; gap: 4px; margin-top: 8px; }
+.goal-arch { padding: 10px 0; border-top: 1px solid var(--card-border); }
+.goal-arch:first-child { border-top: none; padding-top: 0; }
+.goal-form { display: flex; flex-direction: column; gap: 12px; }
+.goal-field { display: flex; flex-direction: column; gap: 6px; }
+.goal-field > span { font-size: 12px; font-weight: 700; color: var(--text-secondary); }
+.goal-strip { cursor: pointer; }
+.goal-strip-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--card-border); }
+.goal-strip-row:first-of-type { border-top: none; padding-top: 0; }
+.goal-strip-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.goal-strip-val { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+

@@ -41,9 +41,16 @@ async function renderToday({ keepTyped = true } = {}) {
     const weights   = todayEntries.filter(e => e.type === 'bodyweight');
     const steps     = todayEntries.find(e => e.type === 'steps' && typeof e.steps === 'number') || null;
 
+    /* Active goals strip (always as of the real today) */
+    const goals = loadGoals();
+    const goalEntries = goals.length
+      ? await getEntriesByDateRange(goalsEarliestStart(goals), todayStr()) : [];
+    const goalsStrip = buildGoalsStrip(goals.map(g => evaluateGoal(g, goalEntries)));
+
     const frag = document.createDocumentFragment();
     frag.appendChild(buildDateBar());
     frag.appendChild(buildPaceCard(thisWeekEntries, lastWeekEntries));
+    if (goalsStrip) frag.appendChild(goalsStrip);
     frag.appendChild(buildGymSection());
     frag.appendChild(buildActivitiesSection());
     frag.appendChild(buildRecoverySection(recovery));
@@ -96,6 +103,10 @@ function attachTodayHandlers() {
   });
   body.querySelector('#date-picker')?.addEventListener('change', e => {
     if (e.target.value) { _selectedDate = e.target.value; renderToday({ keepTyped: false }); }
+  });
+
+  body.querySelector('#goals-strip')?.addEventListener('click', () => {
+    _progView = 'goals'; showScreen('progress');
   });
 
   body.querySelectorAll('[data-gym]').forEach(t =>
