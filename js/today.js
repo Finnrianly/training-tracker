@@ -568,7 +568,7 @@ function entryDisplay(e) {
     case 'training':
       return { icon: activityEmoji(e), title: e.label,
         sub: `${e.minutes} min · RPE ${e.rpe}`,
-        value: `${fmtLoad(e.load)} load` };
+        value: `${fmtLoad(entryLoad(e))} load` };
     case 'recovery': {
       if (!e.saunaMin && !e.coldSessions && !e.stretchMin) return null;
       const parts = [];
@@ -608,45 +608,165 @@ function fmtLoad(load) {
 }
 
 /* ----------------------------------------------------------
+   Session fields: minutes + effort (RPE) + live load.
+   Both start at the preset for the options picked. Once you
+   change one yourself, picking another option keeps your value.
+   An entry is marked manual when it differs from its preset,
+   so later changes to the defaults never overwrite your values.
+   ---------------------------------------------------------- */
+const SVG_MINUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+const SVG_PLUS  = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+
+function minutesRowHtml() {
+  return `
+    <div class="form-row">
+      <span class="form-label">Duration</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="number" id="sess-min" class="input-field input-field-sm" inputmode="numeric"
+          placeholder="30" min="1" max="600" style="width:76px;">
+        <span class="text-secondary">min</span>
+      </div>
+    </div>`;
+}
+
+function effortRowHtml() {
+  return `
+    <div class="form-row">
+      <div>
+        <div class="form-label">Effort (RPE)</div>
+        <div class="form-sublabel" id="sess-rpe-hint"></div>
+      </div>
+      <div class="counter-control">
+        <button class="counter-btn" data-rpe-step="-1" aria-label="Lower effort">${SVG_MINUS}</button>
+        <span class="counter-value mono" id="sess-rpe">--</span>
+        <button class="counter-btn" data-rpe-step="1" aria-label="Raise effort">${SVG_PLUS}</button>
+      </div>
+    </div>`;
+}
+
+function loadRowHtml() {
+  return `
+    <div class="form-row" style="border:none;">
+      <span class="form-label">Load</span>
+      <span id="sess-load" class="mono" style="font-size:16px;font-weight:700;">--</span>
+    </div>`;
+}
+
+/* preset: { minutes, rpe } (either may be null until an option is picked).
+   getMinutes: optional, for forms where minutes come from elsewhere (run time). */
+function bindSessionFields(root, preset, existing, getMinutes) {
+  const minInp = root.querySelector('#sess-min');
+  const rpeEl  = root.querySelector('#sess-rpe');
+  const hint   = root.querySelector('#sess-rpe-hint');
+  const loadEl = root.querySelector('#sess-load');
+  let p = preset;
+  let minTouched = !!existing?.manual;
+  let rpeTouched = !!existing?.manual;
+  let rpe = existing?.rpe ?? p.rpe;
+  if (minInp) minInp.value = existing?.minutes ?? p.minutes ?? '';
+  const minutes = () => getMinutes ? getMinutes() : (parseInt(minInp.value) || 0);
+
+  function show() {
+    rpeEl.textContent = rpe ?? '--';
+    hint.textContent = p.rpe == null ? 'Pick an option, or set it yourself'
+      : rpe === p.rpe ? `Preset ${p.rpe}` : `Adjusted (preset ${p.rpe})`;
+    const m = minutes();
+    loadEl.textContent = m > 0 && rpe ? fmtLoad(calcLoad(m, rpe)) : '--';
+  }
+
+  minInp?.addEventListener('input', () => { minTouched = true; show(); });
+  root.querySelectorAll('[data-rpe-step]').forEach(b => b.addEventListener('click', () => {
+    rpe = Math.min(10, Math.max(1, (rpe ?? p.rpe ?? 5) + parseInt(b.dataset.rpeStep)));
+    rpeTouched = true;
+    show();
+  }));
+  show();
+
+  return {
+    minutes,
+    rpe: () => rpe,
+    setPreset(next) {
+      p = next;
+      if (!minTouched && minInp && p.minutes != null) minInp.value = p.minutes;
+      if (!rpeTouched && p.rpe != null) rpe = p.rpe;
+      show();
+    },
+    manual() {
+      const offMin = !getMinutes && p.minutes != null && minutes() !== p.minutes;
+      return (offMin || rpe !== p.rpe) && (minTouched || rpeTouched || !!existing?.manual);
+    },
+  };
+}
+
+/* ----------------------------------------------------------
+   Session modal: option groups (tiles or pills) + session fields.
+   Rendered once; taps only restyle, so typed values are never wiped.
+   groups:  [{ key, pick, label?, pills?, options: [{ value, label, sub? }] }]
+   preset:  sel => { minutes, rpe }
+   toEntry: sel => entry fields other than minutes / rpe / load
+   ---------------------------------------------------------- */
+function openSessionModal({ title, groups = [], selected = {}, preset, toEntry, existing, saveLabel = 'Log session' }) {
+  const sel = { ...selected };
+  const groupHtml = g => `
+    <div style="margin-bottom:14px;">
+      ${g.label ? `<div class="section-label" style="margin-bottom:8px;">${g.label}</div>` : ''}
+      ${g.pills
+        ? `<div class="pill-group">${g.options.map(o =>
+            `<button class="pill" data-group="${g.key}" data-val="${o.value}">${o.label}</button>`).join('')}</div>`
+        : `<div style="display:grid;grid-template-columns:repeat(${g.options.length},1fr);gap:8px;">${g.options.map(o => `
+            <button class="tile" data-group="${g.key}" data-val="${o.value}" style="text-align:center;align-items:center;justify-content:center;">
+              <div class="tile-label">${o.label}</div>
+              ${o.sub ? `<div class="tile-sub">${o.sub}</div>` : ''}
+            </button>`).join('')}</div>`}
+    </div>`;
+
+  const c = document.createElement('div');
+  c.innerHTML = groups.map(groupHtml).join('') + minutesRowHtml() + effortRowHtml() + loadRowHtml() +
+    `<button class="btn btn-primary btn-full mt-12" id="sess-save">${existing ? 'Update' : saveLabel}</button>`;
+  openModal({ title, content: c });
+
+  const f = bindSessionFields(c, preset(sel), existing);
+
+  function markSelected() {
+    c.querySelectorAll('[data-group]').forEach(b => {
+      const on = sel[b.dataset.group] === b.dataset.val;
+      if (b.classList.contains('pill')) { b.classList.toggle('selected', on); return; }
+      b.style.borderColor = on ? 'var(--accent)' : '';
+      b.querySelector('.tile-label').style.color = on ? 'var(--accent)' : '';
+    });
+  }
+  markSelected();
+
+  c.querySelectorAll('[data-group]').forEach(b => b.addEventListener('click', () => {
+    sel[b.dataset.group] = b.dataset.val;
+    markSelected();
+    f.setPreset(preset(sel));
+  }));
+
+  c.querySelector('#sess-save').addEventListener('click', async () => {
+    const missing = groups.find(g => !sel[g.key]);
+    if (missing) return showToast(missing.pick, 'error');
+    const minutes = f.minutes();
+    const rpe     = f.rpe();
+    if (!minutes || minutes < 1) return showToast('Enter duration.', 'error');
+    if (!rpe)                    return showToast('Set effort.', 'error');
+    const entry = { date: existing?.date ?? _selectedDate, type: 'training', ...toEntry(sel),
+      minutes, rpe, load: calcLoad(minutes, rpe), manual: f.manual() };
+    await saveActivity(entry, existing);
+    closeModal(); showToast(`${entry.label} logged.`); renderToday();
+  });
+}
+
+const capFirst = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+/* ----------------------------------------------------------
    Gym modal
    ---------------------------------------------------------- */
 function openGymModal(gymType, existing) {
   const g = CONFIG.gym[gymType];
-  const minutes = existing?.minutes ?? g.minutes;
-
-  const c = document.createElement('div');
-  c.innerHTML = `
-    <div class="form-row">
-      <span class="form-label">Duration</span>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <input type="number" id="gym-min" class="input-field input-field-sm" value="${minutes}" min="5" max="300" style="width:76px;">
-        <span class="text-secondary">min</span>
-      </div>
-    </div>
-    <div class="form-row">
-      <span class="form-label">RPE</span>
-      <span class="mono" style="font-size:16px;font-weight:700;">${g.rpe}</span>
-    </div>
-    <div class="form-row" style="border:none;">
-      <span class="form-label">Load</span>
-      <span id="gym-load" class="mono" style="font-size:16px;font-weight:700;">${calcLoad(minutes, g.rpe)}</span>
-    </div>
-    <button class="btn btn-primary btn-full mt-12" id="gym-save">${existing ? 'Update' : 'Log session'}</button>`;
-
-  openModal({ title: g.label, content: c });
-  const inp = c.querySelector('#gym-min');
-  setTimeout(() => inp.focus(), 50);
-  inp.addEventListener('input', () => {
-    c.querySelector('#gym-load').textContent = calcLoad(parseInt(inp.value) || 0, g.rpe);
-  });
-  c.querySelector('#gym-save').addEventListener('click', async () => {
-    const m = parseInt(inp.value) || g.minutes;
-    const entry = { date: _selectedDate, type: 'training', subtype: 'gym', gymType,
-      label: g.label, minutes: m, rpe: g.rpe, load: calcLoad(m, g.rpe), category: 'gym' };
-    if (existing) { entry.id = existing.id; await putEntry(entry); }
-    else await addEntry(entry);
-    closeModal(); showToast(`${g.label} logged.`); renderToday();
-  });
+  openSessionModal({ title: g.label, existing,
+    preset:  () => ({ minutes: g.minutes, rpe: g.rpe }),
+    toEntry: () => ({ subtype: 'gym', gymType, label: g.label, category: 'gym' }) });
 }
 
 /* ----------------------------------------------------------
@@ -674,104 +794,45 @@ async function saveActivity(entry, existing) {
 function openIntensityModal(key, existing) {
   const act   = CONFIG.activities[key];
   const sport = key.includes('football') ? 'football' : key.includes('hurling') ? 'hurling' : 'other';
-  const c = document.createElement('div');
-  c.innerHTML = `
-    <p class="text-secondary" style="font-size:13px;margin-bottom:14px;">${act.minutes} min</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      ${['light','heavy'].map(i => `
-        <button class="tile" data-int="${i}" style="text-align:center;align-items:center;justify-content:center;min-height:80px;
-          ${existing?.intensity===i ? 'border-color:var(--accent);' : ''}">
-          <div class="tile-label">${i.charAt(0).toUpperCase()+i.slice(1)}</div>
-          <div class="tile-sub">RPE ${act.rpe[i]} · <span class="mono">${calcLoad(act.minutes,act.rpe[i])}</span></div>
-        </button>`).join('')}
-    </div>`;
-  openModal({ title: act.label, content: c });
-  c.querySelectorAll('[data-int]').forEach(btn =>
-    btn.addEventListener('click', async () => {
-      const i = btn.dataset.int;
-      await saveActivity({ date:_selectedDate, type:'training', subtype:key, label:act.label,
-        intensity:i, minutes:act.minutes, rpe:act.rpe[i], load:calcLoad(act.minutes,act.rpe[i]), category:sport }, existing);
-      closeModal(); showToast(`${act.label} logged.`); renderToday();
-    }));
+  openSessionModal({ title: act.label, existing,
+    groups: [{ key: 'intensity', pick: 'Pick intensity.', options: ['light', 'heavy'].map(i =>
+      ({ value: i, label: capFirst(i), sub: `${act.minutes} min · RPE ${act.rpe[i]}` })) }],
+    selected: { intensity: existing?.intensity },
+    preset:  s => ({ minutes: act.minutes, rpe: s.intensity ? act.rpe[s.intensity] : null }),
+    toEntry: s => ({ subtype: key, label: act.label, intensity: s.intensity, category: sport }) });
 }
 
 /* Came on / Full game */
 function openMatchModal(key, existing) {
   const act   = CONFIG.activities[key];
   const sport = key.includes('football') ? 'football' : 'hurling';
-  const opts  = [['cameOn','Came on'],['fullGame','Full game']];
-  const c = document.createElement('div');
-  c.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      ${opts.map(([opt,lbl]) => `
-        <button class="tile" data-opt="${opt}" style="text-align:center;align-items:center;justify-content:center;min-height:80px;
-          ${existing?.option===opt ? 'border-color:var(--accent);' : ''}">
-          <div class="tile-label">${lbl}</div>
-          <div class="tile-sub">${act.minutes[opt]} min · RPE ${act.rpe[opt]}</div>
-          <div class="tile-sub mono">${calcLoad(act.minutes[opt],act.rpe[opt])} load</div>
-        </button>`).join('')}
-    </div>`;
-  openModal({ title: act.label, content: c });
-  c.querySelectorAll('[data-opt]').forEach(btn =>
-    btn.addEventListener('click', async () => {
-      const opt  = btn.dataset.opt;
-      const mins = act.minutes[opt]; const rpe = act.rpe[opt];
-      const lbl  = act.label + (opt === 'cameOn' ? ' (sub)' : '');
-      await saveActivity({ date:_selectedDate, type:'training', subtype:key, label:lbl,
-        option:opt, minutes:mins, rpe, load:calcLoad(mins,rpe), category:sport }, existing);
-      closeModal(); showToast(`${lbl} logged.`); renderToday();
-    }));
+  openSessionModal({ title: act.label, existing,
+    groups: [{ key: 'option', pick: 'Pick came on or full game.', options: [['cameOn', 'Came on'], ['fullGame', 'Full game']].map(([o, l]) =>
+      ({ value: o, label: l, sub: `${act.minutes[o]} min · RPE ${act.rpe[o]}` })) }],
+    selected: { option: existing?.option },
+    preset:  s => ({ minutes: s.option ? act.minutes[s.option] : null, rpe: s.option ? act.rpe[s.option] : null }),
+    toEntry: s => ({ subtype: key, label: act.label + (s.option === 'cameOn' ? ' (sub)' : ''),
+      option: s.option, category: sport }) });
 }
 
-/* Golf: 2-step */
+/* Golf: walk or cart, 18 or 9 holes */
 function openGolfModal(existing) {
   const act = CONFIG.activities.golf;
-  let transport = existing?.transport || null;
-  const { body } = openModal({ title: 'Golf' });
-
-  function step1() {
-    body.innerHTML = `
-      <p class="text-secondary" style="font-size:13px;margin-bottom:14px;">How did you get around?</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        ${['walk','cart'].map(t => `
-          <button class="tile" data-t="${t}" style="text-align:center;align-items:center;justify-content:center;min-height:80px;">
-            <div class="tile-label">${t.charAt(0).toUpperCase()+t.slice(1)}</div>
-            <div class="tile-sub">RPE ${act.rpe[t]}</div>
-          </button>`).join('')}
-      </div>`;
-    body.querySelectorAll('[data-t]').forEach(b =>
-      b.addEventListener('click', () => { transport = b.dataset.t; step2(); }));
-  }
-
-  function step2() {
-    const rpe = act.rpe[transport];
-    body.innerHTML = `
-      <p class="text-secondary" style="font-size:13px;margin-bottom:14px;">${transport} · RPE ${rpe}</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        ${[[18,'holes18'],[9,'holes9']].map(([h,k]) => `
-          <button class="tile" data-h="${h}" style="text-align:center;align-items:center;justify-content:center;min-height:80px;">
-            <div class="tile-label">${h} holes</div>
-            <div class="tile-sub">${act.minutes[k]} min</div>
-            <div class="tile-sub mono">${calcLoad(act.minutes[k],rpe)} load</div>
-          </button>`).join('')}
-      </div>
-      <button class="btn btn-ghost btn-sm" id="golf-back" style="margin-top:8px;padding-left:0;">Back</button>`;
-    body.querySelector('#golf-back').addEventListener('click', step1);
-    body.querySelectorAll('[data-h]').forEach(b =>
-      b.addEventListener('click', async () => {
-        const holes = parseInt(b.dataset.h);
-        const mKey  = holes === 18 ? 'holes18' : 'holes9';
-        const mins  = act.minutes[mKey];
-        await saveActivity({ date:_selectedDate, type:'training', subtype:'golf',
-          label:`Golf (${transport}, ${holes} holes)`, transport, holes, minutes:mins, rpe,
-          load:calcLoad(mins,rpe), category:'other' }, existing);
-        closeModal(); showToast('Golf logged.'); renderToday();
-      }));
-  }
-  step1();
+  openSessionModal({ title: 'Golf', existing,
+    groups: [
+      { key: 'transport', label: 'How did you get around?', pick: 'Pick walk or cart.',
+        options: ['walk', 'cart'].map(t => ({ value: t, label: capFirst(t), sub: `RPE ${act.rpe[t]}` })) },
+      { key: 'holes', label: 'Holes', pick: 'Pick 18 or 9 holes.',
+        options: [['18', 'holes18'], ['9', 'holes9']].map(([h, k]) => ({ value: h, label: `${h} holes`, sub: `${act.minutes[k]} min` })) },
+    ],
+    selected: { transport: existing?.transport, holes: existing?.holes ? String(existing.holes) : undefined },
+    preset: s => ({ minutes: s.holes ? act.minutes[s.holes === '18' ? 'holes18' : 'holes9'] : null,
+                    rpe: s.transport ? act.rpe[s.transport] : null }),
+    toEntry: s => ({ subtype: 'golf', label: `Golf (${s.transport}, ${s.holes} holes)`,
+      transport: s.transport, holes: parseInt(s.holes), category: 'other' }) });
 }
 
-/* Run */
+/* Run: RPE preset comes from pace, minutes from the run time */
 function openRunModal(existing) {
   const c = document.createElement('div');
   c.innerHTML = `
@@ -795,38 +856,43 @@ function openRunModal(existing) {
       </div>
     </div>
     <div id="run-preview" style="display:none;margin:10px 0;padding:10px;background:var(--bg);border-radius:8px;font-size:13px;color:var(--text-secondary);"></div>
+    ${effortRowHtml()}
+    ${loadRowHtml()}
     <button class="btn btn-primary btn-full mt-4" id="run-save">${existing?'Update':'Log run'}</button>`;
   openModal({ title: 'Run', content: c });
   setTimeout(() => c.querySelector('#run-km').focus(), 50);
 
-  const preview = c.querySelector('#run-preview');
-  function updatePreview() {
+  function readRun() {
     const km = parseFloat(c.querySelector('#run-km').value) || 0;
     const m  = parseInt(c.querySelector('#run-m').value)    || 0;
     const s  = parseInt(c.querySelector('#run-s').value)    || 0;
-    const totalMin = m + s / 60;
-    if (km <= 0 || totalMin <= 0) { preview.style.display = 'none'; return; }
-    const paceS = (totalMin * 60) / km;
-    const { rpe, paceStr } = runRpe(paceS);
+    return { km, m, s, totalMin: m + s / 60 };
+  }
+
+  const f = bindSessionFields(c, { minutes: null, rpe: null }, existing, () => Math.round(readRun().totalMin));
+  const preview = c.querySelector('#run-preview');
+  function updatePreview() {
+    const { km, totalMin } = readRun();
+    if (km <= 0 || totalMin <= 0) { preview.style.display = 'none'; f.setPreset({ minutes: null, rpe: null }); return; }
+    const { rpe, paceStr } = runRpe((totalMin * 60) / km);
     preview.style.display = 'block';
-    preview.textContent   = `Pace: ${paceStr}/km · RPE ${rpe} · Load ${calcLoad(Math.round(totalMin), rpe)}`;
+    preview.textContent   = `Pace: ${paceStr}/km · preset RPE ${rpe}`;
+    f.setPreset({ minutes: null, rpe });
   }
   c.querySelectorAll('input').forEach(i => i.addEventListener('input', updatePreview));
-  if (existing) updatePreview();
+  updatePreview();
 
   c.querySelector('#run-save').addEventListener('click', async () => {
-    const km = parseFloat(c.querySelector('#run-km').value);
-    const m  = parseInt(c.querySelector('#run-m').value)  || 0;
-    const s  = parseInt(c.querySelector('#run-s').value)  || 0;
-    const totalMin = m + s / 60;
+    const { km, m, s, totalMin } = readRun();
     if (!km || km <= 0)    return showToast('Enter distance.', 'error');
     if (totalMin <= 0)     return showToast('Enter a run time.', 'error');
-    const paceS    = (totalMin * 60) / km;
-    const { rpe }  = runRpe(paceS);
-    const minutes  = Math.round(totalMin);
-    await saveActivity({ date:_selectedDate, type:'training', subtype:'run', label:`Run ${km}km`,
+    const rpe     = f.rpe();
+    if (!rpe)              return showToast('Set effort.', 'error');
+    const paceS   = (totalMin * 60) / km;
+    const minutes = Math.round(totalMin);
+    await saveActivity({ date: existing?.date ?? _selectedDate, type:'training', subtype:'run', label:`Run ${km}km`,
       km, timeMinutes:m, timeSecs:s, paceSecPerKm:Math.round(paceS),
-      minutes, rpe, load:calcLoad(minutes,rpe), category:'cardio' }, existing);
+      minutes, rpe, load:calcLoad(minutes,rpe), manual: f.manual(), category:'cardio' }, existing);
     closeModal(); showToast(`Run ${km}km logged.`); renderToday();
   });
 }
@@ -845,96 +911,26 @@ function runRpe(paceSecPerKm) {
 
 /* Conditioning */
 function openConditioningModal(existing) {
-  const rpe = CONFIG.activities.conditioning.rpe;
-  const c   = document.createElement('div');
-  c.innerHTML = `
-    <div class="form-row">
-      <span class="form-label">Duration</span>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <input type="number" id="cond-min" class="input-field input-field-sm" value="${existing?.minutes||''}"
-          placeholder="30" min="5" max="300" style="width:76px;">
-        <span class="text-secondary">min</span>
-      </div>
-    </div>
-    <div class="form-row" style="border:none;">
-      <span class="form-label">RPE</span>
-      <span class="mono" style="font-size:16px;font-weight:700;">${rpe}</span>
-    </div>
-    <button class="btn btn-primary btn-full mt-12" id="cond-save">${existing?'Update':'Log conditioning'}</button>`;
-  openModal({ title: 'Conditioning', content: c });
-  const inp = c.querySelector('#cond-min');
-  setTimeout(() => inp.focus(), 50);
-  c.querySelector('#cond-save').addEventListener('click', async () => {
-    const minutes = parseInt(inp.value);
-    if (!minutes || minutes < 1) return showToast('Enter duration.', 'error');
-    await saveActivity({ date:_selectedDate, type:'training', subtype:'conditioning',
-      label:'Conditioning', minutes, rpe, load:calcLoad(minutes,rpe), category:'cardio' }, existing);
-    closeModal(); showToast('Conditioning logged.'); renderToday();
-  });
+  const act = CONFIG.activities.conditioning;
+  openSessionModal({ title: 'Conditioning', existing, saveLabel: 'Log conditioning',
+    preset:  () => ({ minutes: null, rpe: act.rpe }),
+    toEntry: () => ({ subtype: 'conditioning', label: 'Conditioning', category: 'cardio' }) });
 }
 
 /* Gym cardio */
 function openGymCardioModal(existing) {
   const act = CONFIG.activities.gymCardio;
-  let machine   = existing?.machine   || null;
-  let intensity = existing?.intensity || null;
-  const { body } = openModal({ title: 'Gym cardio' });
-
-  /* Rendered once. Taps only restyle the buttons so typed minutes are never wiped. */
-  const machinePills = act.machines.map(m =>
-    `<button class="pill${machine===m?' selected':''}" data-machine="${m}">${m}</button>`).join('');
-  const intTiles = ['easy','moderate','hard'].map(i => `
-    <button class="tile" data-int="${i}" style="text-align:center;align-items:center;justify-content:center;">
-      <div class="tile-label">${i.charAt(0).toUpperCase()+i.slice(1)}</div>
-      <div class="tile-sub">RPE ${act.rpe[i]}</div>
-    </button>`).join('');
-
-  body.innerHTML = `
-      <div style="margin-bottom:14px;">
-        <div class="section-label" style="margin-bottom:8px;">Machine</div>
-        <div class="pill-group">${machinePills}</div>
-      </div>
-      <div class="form-row">
-        <span class="form-label">Duration</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <input type="number" id="cardio-min" class="input-field input-field-sm" value="${existing?.minutes||''}"
-            placeholder="30" min="5" max="300" style="width:76px;">
-          <span class="text-secondary">min</span>
-        </div>
-      </div>
-      <div style="margin-top:14px;">
-        <div class="section-label" style="margin-bottom:8px;">Intensity</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">${intTiles}</div>
-      </div>
-      <button class="btn btn-primary btn-full mt-12" id="cardio-save">${existing?'Update':'Log cardio'}</button>`;
-
-  function markSelected() {
-    body.querySelectorAll('[data-machine]').forEach(b =>
-      b.classList.toggle('selected', b.dataset.machine === machine));
-    body.querySelectorAll('[data-int]').forEach(b => {
-      const sel = b.dataset.int === intensity;
-      b.style.borderColor = sel ? 'var(--accent)' : '';
-      b.querySelector('.tile-label').style.color = sel ? 'var(--accent)' : '';
-    });
-  }
-  markSelected();
-
-  body.querySelectorAll('[data-machine]').forEach(b =>
-    b.addEventListener('click', () => { machine = b.dataset.machine; markSelected(); }));
-  body.querySelectorAll('[data-int]').forEach(b =>
-    b.addEventListener('click', () => { intensity = b.dataset.int; markSelected(); }));
-
-  body.querySelector('#cardio-save').addEventListener('click', async () => {
-    if (!machine)    return showToast('Pick a machine.', 'error');
-    if (!intensity)  return showToast('Pick intensity.', 'error');
-    const minutes = parseInt(body.querySelector('#cardio-min').value);
-    if (!minutes)    return showToast('Enter duration.', 'error');
-    const rpe   = act.rpe[intensity];
-    await saveActivity({ date:_selectedDate, type:'training', subtype:'gymCardio',
-      label:`Gym cardio (${machine}, ${intensity})`, machine, intensity,
-      minutes, rpe, load:calcLoad(minutes,rpe), category:'cardio' }, existing);
-    closeModal(); showToast('Gym cardio logged.'); renderToday();
-  });
+  openSessionModal({ title: 'Gym cardio', existing, saveLabel: 'Log cardio',
+    groups: [
+      { key: 'machine', label: 'Machine', pick: 'Pick a machine.', pills: true,
+        options: act.machines.map(m => ({ value: m, label: m })) },
+      { key: 'intensity', label: 'Intensity', pick: 'Pick intensity.',
+        options: ['easy', 'moderate', 'hard'].map(i => ({ value: i, label: capFirst(i), sub: `RPE ${act.rpe[i]}` })) },
+    ],
+    selected: { machine: existing?.machine, intensity: existing?.intensity },
+    preset:  s => ({ minutes: null, rpe: s.intensity ? act.rpe[s.intensity] : null }),
+    toEntry: s => ({ subtype: 'gymCardio', label: `Gym cardio (${s.machine}, ${s.intensity})`,
+      machine: s.machine, intensity: s.intensity, category: 'cardio' }) });
 }
 
 /* ----------------------------------------------------------

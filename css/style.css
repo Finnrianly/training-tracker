@@ -1208,3 +1208,9 @@ h1, h2, h3 {
 .how-numbers { margin: 0 0 6px; padding-left: 16px; }
 .how-numbers li { margin-bottom: 4px; }
 
+/* One-time update summary */
+.mig-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mig-table th { text-align: left; font-size: 11px; color: var(--text-secondary); font-weight: 700; padding: 4px 0; }
+.mig-table td { padding: 5px 0; border-top: 1px solid var(--card-border); }
+.mig-table th:not(:first-child), .mig-table td:not(:first-child) { text-align: right; }
+

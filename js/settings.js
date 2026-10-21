@@ -87,9 +87,13 @@ function buildActivitiesCard() {
     ${sRow('Hurling training', 'Heavy RPE', 'activities.hurlingTraining.rpe.heavy', a.hurlingTraining.rpe.heavy, 1, 10)}
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);padding:10px 0 2px;">Matches</div>
     ${sRow('Football match', 'Came on (min)', 'activities.footballMatch.minutes.cameOn', a.footballMatch.minutes.cameOn, 5, 120)}
-    ${sRow('Football match', 'Full game (min)', 'activities.footballMatch.minutes.fullGame', a.footballMatch.minutes.fullGame, 5, 120)}
+    ${sRow('Football match', 'Came on RPE', 'activities.footballMatch.rpe.cameOn', a.footballMatch.rpe.cameOn, 1, 10)}
+    ${sRow('Football match', 'Full game (min, incl. warm-up)', 'activities.footballMatch.minutes.fullGame', a.footballMatch.minutes.fullGame, 5, 150)}
+    ${sRow('Football match', 'Full game RPE', 'activities.footballMatch.rpe.fullGame', a.footballMatch.rpe.fullGame, 1, 10)}
     ${sRow('Hurling match', 'Came on (min)', 'activities.hurlingMatch.minutes.cameOn', a.hurlingMatch.minutes.cameOn, 5, 120)}
-    ${sRow('Hurling match', 'Full game (min)', 'activities.hurlingMatch.minutes.fullGame', a.hurlingMatch.minutes.fullGame, 5, 120)}
+    ${sRow('Hurling match', 'Came on RPE', 'activities.hurlingMatch.rpe.cameOn', a.hurlingMatch.rpe.cameOn, 1, 10)}
+    ${sRow('Hurling match', 'Full game (min, incl. warm-up)', 'activities.hurlingMatch.minutes.fullGame', a.hurlingMatch.minutes.fullGame, 5, 150)}
+    ${sRow('Hurling match', 'Full game RPE', 'activities.hurlingMatch.rpe.fullGame', a.hurlingMatch.rpe.fullGame, 1, 10)}
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);padding:10px 0 2px;">Padel / Tennis</div>
     ${sRow('Padel / Tennis', 'minutes', 'activities.padel.minutes', a.padel.minutes, 5, 300)}
     ${sRow('Padel / Tennis', 'Light RPE', 'activities.padel.rpe.light', a.padel.rpe.light, 1, 10)}

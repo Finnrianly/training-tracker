@@ -35,10 +35,18 @@ function stepsByDate(entries) {
 /* ----------------------------------------------------------
    Training and total week load from an entries array
    ---------------------------------------------------------- */
+/* A session's load always comes from its own minutes and RPE
+   (the stored load is only a fallback for an entry missing either) */
+function entryLoad(e) {
+  return typeof e.minutes === 'number' && typeof e.rpe === 'number'
+    ? Math.round(e.minutes * e.rpe) / 10
+    : (e.load || 0);
+}
+
 function weekTrainingLoad(entries) {
   return entries
     .filter(e => e.type === 'training')
-    .reduce((s, e) => s + (e.load || 0), 0);
+    .reduce((s, e) => s + entryLoad(e), 0);
 }
 
 function weekStepsLoad(entries) {

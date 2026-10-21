@@ -24,12 +24,12 @@ const DEFAULT_CONFIG = {
     },
     footballMatch: {
       label: 'Football match', emoji: '⚽',
-      minutes: { cameOn: 30, fullGame: 60 },
+      minutes: { cameOn: 50, fullGame: 85 },   /* full game includes warm-up */
       rpe:     { cameOn:  8, fullGame:  9 },
     },
     hurlingMatch: {
       label: 'Hurling match', emoji: '🏑',
-      minutes: { cameOn: 30, fullGame: 60 },
+      minutes: { cameOn: 50, fullGame: 85 },   /* full game includes warm-up */
       rpe:     { cameOn:  8, fullGame:  9 },
     },
     golf: {
@@ -147,16 +147,40 @@ const DEFAULT_CONFIG = {
 /* ----------------------------------------------------------
    Runtime config: merge persisted overrides with defaults
    ---------------------------------------------------------- */
+/* Match defaults before Oct 2026. Used to spot saved settings and logged
+   entries that were still on the old defaults (see migrateMatchSettings
+   here and findMatchDefaultUpdates in data.js). */
+const LEGACY_MATCH_DEFAULTS = {
+  minutes: { cameOn: 30, fullGame: 60 },
+  rpe:     { cameOn:  8, fullGame:  9 },
+};
+
 let CONFIG = loadConfig();
 
 function loadConfig() {
   try {
     const stored = localStorage.getItem('tt_config');
     if (!stored) return deepClone(DEFAULT_CONFIG);
-    return deepMerge(deepClone(DEFAULT_CONFIG), JSON.parse(stored));
+    return migrateMatchSettings(deepMerge(deepClone(DEFAULT_CONFIG), JSON.parse(stored)));
   } catch {
     return deepClone(DEFAULT_CONFIG);
   }
+}
+
+/* One-time: a saved match setting still on the old default moves to the
+   new default; a value you changed yourself is kept */
+function migrateMatchSettings(cfg) {
+  if (localStorage.getItem('tt_cfg_match_v2')) return cfg;
+  ['footballMatch', 'hurlingMatch'].forEach(k => {
+    Object.entries(LEGACY_MATCH_DEFAULTS.minutes).forEach(([opt, old]) => {
+      if (cfg.activities[k].minutes[opt] === old) {
+        cfg.activities[k].minutes[opt] = DEFAULT_CONFIG.activities[k].minutes[opt];
+      }
+    });
+  });
+  localStorage.setItem('tt_config', JSON.stringify(cfg));
+  localStorage.setItem('tt_cfg_match_v2', '1');
+  return cfg;
 }
 
 function saveConfig() {

@@ -464,7 +464,7 @@ function buildCategoryChart(data) {
   };
   data.allEntries.filter(e => e.type === 'training').forEach(e => {
     const c = e.category || 'other';
-    cats[c] = (cats[c] || 0) + (e.load || 0);
+    cats[c] = (cats[c] || 0) + entryLoad(e);
   });
   const stepsLoad = data.stepsLoad;
 

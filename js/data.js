@@ -183,6 +183,40 @@ async function migrateWeeklySteps() {
 }
 
 /* ----------------------------------------------------------
+   Match defaults update (one-time, saved only after Confirm)
+   Past match entries still on the old defaults (LEGACY_MATCH_DEFAULTS)
+   and never changed by hand get the current defaults. Nothing is
+   saved here: returns all entries and the updated copies.
+   ---------------------------------------------------------- */
+async function findMatchDefaultUpdates() {
+  const all = await getAllEntries();
+  const old = LEGACY_MATCH_DEFAULTS;
+  const updates = [];
+  all.forEach(e => {
+    if (e.type !== 'training' || e.manual) return;
+    if (e.subtype !== 'footballMatch' && e.subtype !== 'hurlingMatch') return;
+    const opt = e.option;
+    if (!(opt in old.minutes) || e.minutes !== old.minutes[opt] || e.rpe !== old.rpe[opt]) return;
+    const a = CONFIG.activities[e.subtype];
+    const minutes = a.minutes[opt], rpe = a.rpe[opt];
+    if (minutes === e.minutes && rpe === e.rpe) return;
+    updates.push({ ...e, minutes, rpe, load: Math.round(minutes * rpe) / 10 });
+  });
+  return { all, updates };
+}
+
+async function saveEntries(entries) {
+  await openDB();
+  const tx    = _db.transaction([STORE], 'readwrite');
+  const store = tx.objectStore(STORE);
+  entries.forEach(e => store.put(e));
+  await new Promise((resolve, reject) => {
+    tx.oncomplete = resolve;
+    tx.onerror    = (ev) => reject(ev.target.error);
+  });
+}
+
+/* ----------------------------------------------------------
    Export (download JSON file)
    ---------------------------------------------------------- */
 async function exportData() {
@@ -245,6 +279,10 @@ async function importData(jsonString) {
   if (payload.settings) {
     localStorage.setItem('tt_config', JSON.stringify(payload.settings));
   }
+
+  /* A restored backup may predate the new match defaults: check it again */
+  localStorage.removeItem('tt_cfg_match_v2');
+  localStorage.removeItem('tt_match_entries_v2');
 
   localStorage.setItem('tt_last_backup', new Date().toISOString());
 }
