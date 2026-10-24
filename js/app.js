@@ -126,6 +126,7 @@ async function doExport() {
 async function doImport(jsonText) {
   await importData(jsonText);
   CONFIG = loadConfig();
+  await lockWeekPhases();
   showToast('Data restored successfully.', 'success');
   const active = document.querySelector('.tab.active');
   if (active) showScreen(active.dataset.screen);
@@ -196,8 +197,11 @@ async function offerMatchDefaultsUpdate() {
    ---------------------------------------------------------- */
 openDB()
   .then(() => migrateWeeklySteps())
-  .then(n => {
+  .then(async n => {
     if (n) console.log(`Migrated ${n} weekly steps entr${n > 1 ? 'ies' : 'y'} to daily.`);
+    /* Save each finished week's phase so it keeps the score it earned */
+    const locked = await lockWeekPhases().catch(err => { console.warn('Phase lock skipped:', err); return 0; });
+    if (locked) console.log(`Saved the phase for ${locked} finished week${locked > 1 ? 's' : ''}.`);
     showScreen('today');
     return offerMatchDefaultsUpdate()
       .catch(err => console.warn('Match defaults update skipped:', err));

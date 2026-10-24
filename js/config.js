@@ -129,9 +129,30 @@ const DEFAULT_CONFIG = {
     drinksRedMin:  15,
   },
 
-  bodyWeight: {
-    targetLossMin: 0.25,
-    targetLossMax: 0.75,
+  /* Phases: each runs from its start date until the next one starts.
+     A week takes the phase in effect on its Sunday. */
+  phases: {
+    schedule: [
+      { phase: 'baseline', start: '2026-10-24' },
+      { phase: 'cut',      start: '2026-11-09' },
+      { phase: 'hold',     start: '2026-12-20' },
+      { phase: 'cut',      start: '2027-01-11' },
+      { phase: 'reverse',  start: '2027-02-22' },
+      { phase: 'season',   start: '2027-03-15' },
+    ],
+  },
+
+  /* Body slice thresholds per phase (kg change in weekly average) */
+  bodyScore: {
+    cut:     { lossMin: 0.25, lossMax: 0.75 },   /* Cut */
+    steady:  { inner: 0.25, outer: 0.5 },        /* Baseline, Hold, Season */
+    reverse: { band: 0.25 },                     /* Reverse */
+  },
+
+  weeklyChecks: {
+    bench:  { green: 96, amber: 91.5 },          /* e1RM kg: green at or above, amber at or above */
+    bronco: { green: 300, amber: 308,            /* seconds: green under, amber up to and including */
+              priorBest: 296, goal: 270 },       /* 4:56 best before the app, 4:30 goal */
   },
 
   sleep: {
@@ -161,10 +182,24 @@ function loadConfig() {
   try {
     const stored = localStorage.getItem('tt_config');
     if (!stored) return deepClone(DEFAULT_CONFIG);
-    return migrateMatchSettings(deepMerge(deepClone(DEFAULT_CONFIG), JSON.parse(stored)));
+    return migrateBodyWeightSettings(
+      migrateMatchSettings(deepMerge(deepClone(DEFAULT_CONFIG), JSON.parse(stored))));
   } catch {
     return deepClone(DEFAULT_CONFIG);
   }
+}
+
+/* The old single "lose weight" thresholds (bodyWeight) become the Cut
+   thresholds, keeping any value you changed. Runs whenever old settings
+   turn up (also after importing an older backup). */
+function migrateBodyWeightSettings(cfg) {
+  if (!cfg.bodyWeight) return cfg;
+  const old = cfg.bodyWeight;
+  if (typeof old.targetLossMin === 'number') cfg.bodyScore.cut.lossMin = old.targetLossMin;
+  if (typeof old.targetLossMax === 'number') cfg.bodyScore.cut.lossMax = old.targetLossMax;
+  delete cfg.bodyWeight;
+  localStorage.setItem('tt_config', JSON.stringify(cfg));
+  return cfg;
 }
 
 /* One-time: a saved match setting still on the old default moves to the

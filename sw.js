@@ -7,7 +7,7 @@
    Bump CACHE_VERSION when deploying a new build to force refresh.
    ============================================================ */
 
-const CACHE_VERSION = 'tt-v7';
+const CACHE_VERSION = 'tt-v8';
 const FONT_CACHE    = 'tt-fonts-v1';
 
 const APP_SHELL = [
@@ -23,6 +23,7 @@ const APP_SHELL = [
   './js/today.js',
   './js/sleep.js',
   './js/week.js',
+  './js/checks.js',
   './js/history.js',
   './js/progress.js',
   './js/review.js',

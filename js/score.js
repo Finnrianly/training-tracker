@@ -171,9 +171,37 @@ function weekDrinksPoints(entries) {
 }
 
 /* ----------------------------------------------------------
-   Body weight slice (0-10)
+   Phases
+   A week takes the phase in effect on its Sunday, unless the week
+   record has a saved phase (manual override, or locked when the
+   week ended). Before the schedule starts: Cut, the old rule.
    ---------------------------------------------------------- */
-function computeBodySlice(weekWeightArrays) {
+const PHASES = {
+  baseline: 'Baseline',
+  cut:      'Cut',
+  hold:     'Hold',
+  reverse:  'Reverse',
+  season:   'Season',
+};
+
+function schedulePhaseFor(dateStr) {
+  const sched = [...CONFIG.phases.schedule].sort((a, b) => a.start < b.start ? -1 : 1);
+  let phase = 'cut';
+  sched.forEach(s => { if (s.start <= dateStr && PHASES[s.phase]) phase = s.phase; });
+  return phase;
+}
+
+/* { phase, source: 'manual' | 'locked' | 'schedule' } for a week */
+function weekPhaseInfo(mondayStr) {
+  const rec = getWeekRec(mondayStr);
+  if (rec.phase && PHASES[rec.phase]) return { phase: rec.phase, source: rec.phaseSource || 'locked' };
+  return { phase: schedulePhaseFor(weekSundayStr(mondayStr)), source: 'schedule' };
+}
+
+/* ----------------------------------------------------------
+   Body weight slice (0-10), scored against the week's phase
+   ---------------------------------------------------------- */
+function computeBodySlice(weekWeightArrays, phase = 'cut') {
   /* weekWeightArrays[0] = this week's kg values, [1] = last week, [2]/[3] = older */
   const w0 = weekWeightArrays[0] || [];
   const w1 = weekWeightArrays[1] || [];
@@ -208,16 +236,78 @@ function computeBodySlice(weekWeightArrays) {
 
   if (change === null) return { points: null, label: null, change: null, lowData: false, na: true };
 
-  return { ...bodyPoints(change), change: round2(change), lowData, na: false };
+  return { ...bodyPoints(change, phase), change: round2(change), lowData, na: false };
 }
 
-function bodyPoints(change) {
-  const c = CONFIG.bodyWeight;
-  if (change <= -c.targetLossMax)                              return { points: 6,  label: 'Losing too fast' };
-  if (change >= -c.targetLossMax && change <= -c.targetLossMin) return { points: 10, label: 'On target' };
-  if (change > -c.targetLossMin && change <= 0)               return { points: 6,  label: 'Slow' };
-  if (change > 0 && change <= c.targetLossMin)                return { points: 3,  label: 'Flat' };
+function bodyPoints(change, phase = 'cut') {
+  if (phase === 'reverse') return bodyPointsReverse(change);
+  if (phase === 'cut')     return bodyPointsCut(change);
+  return bodyPointsSteady(change);
+}
+
+/* Cut: the original "lose weight slowly" rule, unchanged */
+function bodyPointsCut(change) {
+  const c = CONFIG.bodyScore.cut;
+  if (change <= -c.lossMax)                         return { points: 6,  label: 'Losing too fast' };
+  if (change >= -c.lossMax && change <= -c.lossMin) return { points: 10, label: 'On target' };
+  if (change > -c.lossMin && change <= 0)           return { points: 6,  label: 'Slow' };
+  if (change > 0 && change <= c.lossMin)            return { points: 3,  label: 'Flat' };
   return { points: 0, label: 'Going the wrong way' };
+}
+
+/* Baseline, Hold, Season: stay steady */
+function bodyPointsSteady(change) {
+  const c = CONFIG.bodyScore.steady;
+  const a = Math.abs(change);
+  if (a <= c.inner) return { points: 10, label: 'Steady' };
+  if (a <= c.outer) return { points: 6,  label: change > 0 ? 'Drifting up' : 'Drifting down' };
+  return { points: 0, label: change > 0 ? 'Up too much' : 'Down too much' };
+}
+
+/* Reverse: creep up slowly */
+function bodyPointsReverse(change) {
+  const b = CONFIG.bodyScore.reverse.band;
+  if (change >= 0 && change <= b) return { points: 10, label: 'On target' };
+  if (change < 0 && change >= -b) return { points: 8,  label: 'Slightly down' };
+  if (change > b)                 return { points: 3,  label: 'Gaining too fast' };
+  return { points: 3, label: 'Still losing' };
+}
+
+/* ----------------------------------------------------------
+   Weekly checks: bench e1RM and Bronco time bands
+   (not part of the Week Score)
+   ---------------------------------------------------------- */
+function estimated1RM(kg, reps) {
+  return kg * (1 + reps / 30);
+}
+
+/* 'good' | 'warn' | 'bad' */
+function benchBand(e1rm) {
+  const c = CONFIG.weeklyChecks.bench;
+  return e1rm >= c.green ? 'good' : e1rm >= c.amber ? 'warn' : 'bad';
+}
+
+function broncoBand(sec) {
+  const c = CONFIG.weeklyChecks.bronco;
+  return sec < c.green ? 'good' : sec <= c.amber ? 'warn' : 'bad';
+}
+
+/* 296 -> "4:56" */
+function fmtMmss(sec) {
+  return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+}
+
+/* "4:56", "4.56" or "456" -> 296; null if not a valid time */
+function parseMmss(str) {
+  const s = String(str).trim();
+  let m, sec;
+  const sep = s.match(/^(\d{1,2})[:.,](\d{1,2})$/);
+  if (sep) { m = +sep[1]; sec = +sep[2]; }
+  else if (/^\d{3,4}$/.test(s)) { m = +s.slice(0, -2); sec = +s.slice(-2); }
+  else return null;
+  if (sec > 59) return null;
+  const total = m * 60 + sec;
+  return total > 0 ? total : null;
 }
 
 /* ----------------------------------------------------------
@@ -243,9 +333,10 @@ function computeFlags(data, prevData) {
     candidates.push({ priority: 10, type: 'danger',
       text: 'Spike week. Injury risk is up, pull something back.' });
   }
-  if (data.bodyLabel === 'Losing too fast') {
+  const isCut = data.phase === 'cut';
+  if (isCut && data.bodyLabel === 'Losing too fast') {
     candidates.push({ priority: 9, type: 'danger',
-      text: 'Losing too fast -- over 0.75 kg this week. Watch strength.' });
+      text: `Losing too fast, over ${CONFIG.bodyScore.cut.lossMax} kg this week. Watch strength.` });
   }
 
   /* --  warning flags  -- */
@@ -267,11 +358,17 @@ function computeFlags(data, prevData) {
   if (data.ratio !== null && data.ratio < CONFIG.loadRatio.greenMin) {
     candidates.push({ priority: 6, type: 'warning', text: 'Light week. You coasted.' });
   }
-  if (data.bodyChange !== null && data.bodyChange > CONFIG.bodyWeight.targetLossMin) {
+  if (isCut && data.bodyChange !== null && data.bodyChange > CONFIG.bodyScore.cut.lossMin) {
     candidates.push({ priority: 5, type: 'warning', text: 'Weight up this week.' });
   }
-  if (data.weightUpTwoWeeks) {
+  if (isCut && data.weightUpTwoWeeks) {
     candidates.push({ priority: 4, type: 'warning', text: 'Weight up 2 weeks running.' });
+  }
+  /* Other phases: flag a change in the lowest band */
+  if (!isCut && data.bodyChange !== null && data.bodyPoints !== null && data.bodyPoints <= 3) {
+    const ch = data.bodyChange;
+    candidates.push({ priority: 5, type: 'warning',
+      text: `${data.bodyLabel}: ${ch > 0 ? '+' : ''}${ch.toFixed(2)} kg this week, outside the ${PHASES[data.phase]} range.` });
   }
 
   if (prevData) {
@@ -436,15 +533,17 @@ function scoreWeek(mondayStr, entries, { asOf, live }) {
   const drinksPoints   = weekDrinksPoints(w);
   const heavyDrinkNights = findHeavyDrinkWakeLinks(w, sleepEntries);
 
-  /* -- Body: a Live week with no weigh-in yet is Pending; only a
-        completed week with no weigh-ins scores 0 -- */
+  /* -- Body: scored against this week's own phase. A Live week with no
+        weigh-in yet is Pending; only a completed week with none scores 0 -- */
+  const phaseInfo = weekPhaseInfo(mondayStr);
+  const phase     = phaseInfo.phase;
   const weightArrays = [w, ...prevWeeks.slice(0, 3).map(pw => pw.entries)]
     .map(es => es.filter(e => e.type === 'bodyweight').map(e => e.kg));
   let bodyResult;
   if (live && weightArrays[0].length === 0) {
     bodyResult = { points: null, label: null, change: null, lowData: false, na: true, status: 'pending' };
   } else {
-    bodyResult = computeBodySlice(weightArrays);
+    bodyResult = computeBodySlice(weightArrays, phase);
     bodyResult.status = bodyResult.na ? 'na' : null;
   }
   const avgWeight   = weightArrays[0].length > 0 ? round2(avg(weightArrays[0])) : null;
@@ -496,8 +595,10 @@ function scoreWeek(mondayStr, entries, { asOf, live }) {
   const flags = computeFlags({
     ratio, nightsUnder7_5, heavyDrinkNights,
     cardioMinutes, takeawayDamage,
+    phase,
     bodyLabel:  bodyResult.label,
     bodyChange: bodyResult.change,
+    bodyPoints: bodyResult.points,
     weightUpTwoWeeks,
     takeawayLowestIn4Weeks,
   }, prevData);
@@ -517,6 +618,7 @@ function scoreWeek(mondayStr, entries, { asOf, live }) {
     recWakePts:   rec.wakePts,
     recWorkPts:   rec.workPts,
     takeawayDamage, drinksPoints, heavyDrinkNights,
+    phase, phaseSource: phaseInfo.source,
     avgWeight, prevAvgWt, weightChange: bodyResult.change,
     bodyLabel: bodyResult.label, bodySlicePoints: bPts, bodyNA: bodyResult.na,
     bodyStatus: bodyResult.status, bodyLowData: bodyResult.lowData, weightUpTwoWeeks,
@@ -659,6 +761,49 @@ function runScoringChecks() {
   ok('Body slow (-0.1)',         bodyPoints(-0.1).points,  6);
   ok('Body flat (+0.1)',         bodyPoints(0.1).points,   3);
   ok('Body wrong way (+0.5)',    bodyPoints(0.5).points,   0);
+
+  /* Body slice by phase */
+  ok('Cut on target (-0.5)',        bodyPoints(-0.5, 'cut').points,      10);
+  ok('Hold steady (+0.2)',          bodyPoints(0.2, 'hold').points,      10);
+  ok('Hold steady (-0.25)',         bodyPoints(-0.25, 'hold').points,    10);
+  ok('Baseline drifting (-0.4)',    bodyPoints(-0.4, 'baseline').points, 6);
+  ok('Season drifting (+0.5)',      bodyPoints(0.5, 'season').points,    6);
+  ok('Hold too much (+0.6)',        bodyPoints(0.6, 'hold').points,      0);
+  ok('Reverse on target (+0.2)',    bodyPoints(0.2, 'reverse').points,   10);
+  ok('Reverse no change (0)',       bodyPoints(0, 'reverse').points,     10);
+  ok('Reverse slightly down (-0.1)', bodyPoints(-0.1, 'reverse').points, 8);
+  ok('Reverse too fast (+0.4)',     bodyPoints(0.4, 'reverse').points,   3);
+  ok('Reverse still losing (-0.4)', bodyPoints(-0.4, 'reverse').points, 3);
+
+  /* Phase schedule (week takes the phase on its Sunday) */
+  const okStr = (label, got, expected) => console[got === expected ? 'log' : 'error'](
+    `${got === expected ? '✓' : '✗'} ${label}: got ${got}, expected ${expected}`);
+  if (JSON.stringify(CONFIG.phases.schedule) === JSON.stringify(DEFAULT_CONFIG.phases.schedule)) {
+    okStr('Phase before schedule', schedulePhaseFor('2026-10-18'), 'cut');
+    okStr('Phase 24 Oct 2026',     schedulePhaseFor('2026-10-24'), 'baseline');
+    okStr('Phase 8 Nov 2026',      schedulePhaseFor('2026-11-08'), 'baseline');
+    okStr('Phase 9 Nov 2026',      schedulePhaseFor('2026-11-09'), 'cut');
+    okStr('Phase 10 Jan 2027',     schedulePhaseFor('2027-01-10'), 'hold');
+    okStr('Phase 14 Mar 2027',     schedulePhaseFor('2027-03-14'), 'reverse');
+    okStr('Phase 15 Mar 2027',     schedulePhaseFor('2027-03-15'), 'season');
+  }
+
+  /* Bench e1RM (brief examples; colours use the default thresholds) */
+  ok('e1RM 87.5 x 3', estimated1RM(87.5, 3), 96.25);
+  ok('e1RM 85 x 3',   estimated1RM(85, 3),   93.5);
+  ok('e1RM 82.5 x 3', estimated1RM(82.5, 3), 90.75);
+  if (JSON.stringify(CONFIG.weeklyChecks) === JSON.stringify(DEFAULT_CONFIG.weeklyChecks)) {
+    okStr('Bench 87.5 x 3 green', benchBand(estimated1RM(87.5, 3)), 'good');
+    okStr('Bench 87.5 x 2 amber', benchBand(estimated1RM(87.5, 2)), 'warn');
+    okStr('Bench 85 x 3 amber',   benchBand(estimated1RM(85, 3)),   'warn');
+    okStr('Bench 82.5 x 3 red',   benchBand(estimated1RM(82.5, 3)), 'bad');
+    okStr('Bronco 4:59 green',    broncoBand(299), 'good');
+    okStr('Bronco 5:00 amber',    broncoBand(300), 'warn');
+    okStr('Bronco 5:08 amber',    broncoBand(308), 'warn');
+    okStr('Bronco 5:09 red',      broncoBand(309), 'bad');
+  }
+  ok('Parse 4:56', parseMmss('4:56'), 296);
+  ok('Parse 456',  parseMmss('456'),  296);
 
   console.log('Scoring checks complete.');
 }

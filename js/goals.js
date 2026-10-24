@@ -298,8 +298,8 @@ function evalWeightProgress(goal, entries, base, today) {
     : status === 'slight' ? `${text}. You need ${need}. Slightly behind`
     : `${text}. Behind: you need ${need} from now to make it`;
   r.status = status;
-  /* Too-fast warning (same 0.75 kg/week limit as the Body slice) */
-  if (down && -r.needPerWeek > CONFIG.bodyWeight.targetLossMax) {
+  /* Too-fast warning (same limit as the Cut Body slice) */
+  if (down && -r.needPerWeek > CONFIG.bodyScore.cut.lossMax) {
     r.warning = 'Pace too fast, risk of losing strength. Consider a later date.';
   }
   return r;

@@ -164,24 +164,28 @@ Averages use only the nights actually logged.
 | Recovery | 30 | Recovery score × 0.3 |
 | Diet: food | 22 | Takeaway Damage (takeaways + desserts) of 2 or under = 22, falls linearly to 0 at 12 |
 | Diet: drinks | 8 | Drinks points of 4 or under = 8, falls linearly to 0 at 15 |
-| Body | 10 | Weight trend, goal is to lose weight slowly (see below) |
+| Body | 10 | Weight trend, scored by the week's phase (see below) |
 
 Show the breakdown under the score so Finn can see exactly where points were lost.
 
-### Body slice: weight trend (goal = down)
+### Body slice: weight trend, scored by phase
 Weekly change = this week's average weigh-in minus last week's average weigh-in.
-| Weekly change | Points | Label |
+Phases (default schedule, editable in Settings; each runs until the next starts): Baseline 2026-10-24, Cut 2026-11-09, Hold 2026-12-20, Cut 2027-01-11, Reverse 2027-02-22, Season 2027-03-15 onwards. A week takes the phase in effect on its Sunday; the current week's phase can be overridden on the Week tab. Finished weeks save their phase so they keep the score they earned. Weeks before the schedule are Cut.
+| Phase | Weekly change | Points |
 |---|---|---|
-| Down 0.25 to 0.75 kg | 10 | On target |
-| Down more than 0.75 kg | 6 | Losing too fast, watch strength |
-| Down 0 to 0.25 kg | 6 | Slow |
-| Up 0 to 0.25 kg | 3 | Flat |
-| Up more than 0.25 kg | 0 | Going the wrong way |
-| No weigh-ins this week | 0 | No data |
+| Cut | Down 0.25 to 0.75 / down more / down 0 to 0.25 / up 0 to 0.25 / up more | 10 / 6 / 6 / 3 / 0 |
+| Baseline, Hold, Season | Within 0.25 either way / 0.25 to 0.5 / more than 0.5 | 10 / 6 / 0 |
+| Reverse | Up 0 to 0.25 / down 0 to 0.25 / up or down more than 0.25 | 10 / 8 / 3 |
+| Any | No weigh-ins this week | 0 |
 
 Thin data rule: if this week or last week has only 1 weigh-in, use a 2-week rolling comparison instead (average of the last 2 weeks minus average of the 2 weeks before, divided by 2) and show a small "low data" tag.
 First week ever (nothing to compare to): Body slice is n/a and the Week Score is scaled from the other slices to out of 100.
-Extra flags: "Losing too fast, over 0.75 kg this week" and "Weight up 2 weeks running".
+Extra flags (Cut): "Losing too fast, over 0.75 kg this week" and "Weight up 2 weeks running". Other phases flag a change in the lowest band.
+
+### Weekly checks (Week tab, saved per week, not in the Week Score)
+- Fasted waist (cm): change vs last logged and vs first logged.
+- Bench top set (kg x reps): e1RM = kg x (1 + reps / 30). Green 96+, amber 91.5 to 95.9, red below. Last 4 top sets listed.
+- Bronco (m:ss, optional, about every 4 weeks): green under 5:00, amber 5:00 to 5:08, red slower. Shows best (4:56 before the app) and goal 4:30.
 
 ---
 

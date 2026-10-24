@@ -242,6 +242,68 @@ function saveGoals(goals) {
 }
 
 /* ----------------------------------------------------------
+   Week records: one per week, keyed by its Monday. Kept apart
+   from the entries store so no existing entry is touched.
+     phase       : saved phase (see lockWeekPhases / override)
+     phaseSource : 'manual' (override) or 'locked' (week ended)
+     waist       : cm
+     benchKg, benchReps : bench top set
+     broncoSec   : Bronco time in seconds
+   ---------------------------------------------------------- */
+const WEEKS_KEY = 'tt_weeks';
+let _weeks = null;
+
+function loadWeeks() {
+  if (_weeks) return _weeks;
+  try { _weeks = JSON.parse(localStorage.getItem(WEEKS_KEY)) || {}; }
+  catch { _weeks = {}; }
+  return _weeks;
+}
+
+function saveWeeks(weeks) {
+  _weeks = weeks;
+  localStorage.setItem(WEEKS_KEY, JSON.stringify(weeks));
+}
+
+function getWeekRec(monday) {
+  return loadWeeks()[monday] || {};
+}
+
+/* Merge fields into a week record; null or undefined removes a field */
+function setWeekRec(monday, patch) {
+  const weeks = loadWeeks();
+  const rec   = { ...(weeks[monday] || {}) };
+  Object.entries(patch).forEach(([k, v]) => {
+    if (v === null || v === undefined) delete rec[k]; else rec[k] = v;
+  });
+  if (Object.keys(rec).length) weeks[monday] = rec; else delete weeks[monday];
+  saveWeeks(weeks);
+}
+
+/* ----------------------------------------------------------
+   Lock phases: every completed week from your first entry up
+   to last week saves the phase it was scored under, so editing
+   the schedule later never rescores the past. Weeks before the
+   schedule starts get Cut (the old "lose weight" rule), so their
+   scores are unchanged. Safe to run repeatedly.
+   ---------------------------------------------------------- */
+async function lockWeekPhases() {
+  const all = await getAllEntries();
+  const dates = all.map(e => e.date).filter(Boolean);
+  if (!dates.length) return 0;
+  const weeks = loadWeeks();
+  const current = weekStartStr(todayStr());
+  let n = 0;
+  for (let m = weekStartStr(dates.reduce((a, b) => a < b ? a : b)); m < current; m = addWeeks(m, 1)) {
+    if (weeks[m]?.phase) continue;
+    weeks[m] = { ...(weeks[m] || {}), phase: schedulePhaseFor(weekSundayStr(m)), phaseSource: 'locked' };
+    n++;
+  }
+  if (n) saveWeeks(weeks);
+  return n;
+}
+
+/* ----------------------------------------------------------
    Export (download JSON file)
    ---------------------------------------------------------- */
 async function exportData() {
@@ -253,6 +315,7 @@ async function exportData() {
     entries,
     settings: JSON.parse(settings),
     goals:    loadGoals(),
+    weeks:    loadWeeks(),
   };
 
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -308,6 +371,10 @@ async function importData(jsonString) {
 
   /* Goals (older backups have none: keep the current list) */
   if (Array.isArray(payload.goals)) saveGoals(payload.goals);
+
+  /* Week records: phases and weekly checks (older backups have none:
+     keep the current ones; past phases are locked again after import) */
+  if (payload.weeks && typeof payload.weeks === 'object') saveWeeks(payload.weeks);
 
   /* A restored backup may predate the new match defaults: check it again */
   localStorage.removeItem('tt_cfg_match_v2');

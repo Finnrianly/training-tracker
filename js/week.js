@@ -23,6 +23,7 @@ async function renderWeek() {
     frag.appendChild(buildWeekNav(data));
     frag.appendChild(buildHeroCard(data));
     frag.appendChild(buildMetricGrid(data));
+    frag.appendChild(buildWeeklyChecksCard(data.mondayStr));
     frag.appendChild(buildDailyChart(data, data.prevWeek));
     frag.appendChild(buildCategoryChart(data));
     if (data.flags.length) frag.appendChild(buildFlagsCard(data));
@@ -59,15 +60,55 @@ function buildWeekNav(data) {
       <button class="icon-btn" id="week-prev">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
-      <div style="flex:1;text-align:center;">
+      <div style="flex:1;text-align:center;min-width:0;">
         <div style="font-size:14px;font-weight:700;color:var(--text);">${isCurrent ? 'This week' : label}</div>
         ${isCurrent ? `<div style="font-size:11px;color:var(--text-secondary);">${label}</div>` : ''}
+        ${phaseLabelHtml(data, isCurrent)}
       </div>
       <button class="icon-btn" id="week-next" ${isCurrent ? 'disabled style="opacity:0.3;"' : ''}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
     </div>`;
   return div.firstElementChild;
+}
+
+/* Phase label: tap to override on the current week; past weeks show
+   the phase they were scored under */
+const PHASE_BADGE = { baseline: '', cut: 'badge-orange', hold: 'badge-blue', reverse: 'badge-green', season: 'badge-blue' };
+
+function phaseLabelHtml(data, isCurrent) {
+  const name = PHASES[data.phase];
+  const tag  = data.phaseSource === 'manual' ? ' (set by you)' : '';
+  const cls  = `badge phase-badge ${PHASE_BADGE[data.phase]}`;
+  return isCurrent
+    ? `<button class="${cls}" id="week-phase" aria-label="Change phase">${name} phase${tag} <span aria-hidden="true">▾</span></button>`
+    : `<span class="${cls}">${name} phase</span>`;
+}
+
+function openPhaseModal(mondayStr) {
+  const info  = weekPhaseInfo(mondayStr);
+  const sched = schedulePhaseFor(weekSundayStr(mondayStr));
+  const c = document.createElement('div');
+  c.innerHTML = `
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+      The phase sets how the Body slice scores your weekly weight change.
+      The schedule says <b>${PHASES[sched]}</b> for this week.</p>
+    <div class="pill-group">
+      <button class="pill ${info.source !== 'manual' ? 'selected' : ''}" data-phase="">Auto (${PHASES[sched]})</button>
+      ${Object.entries(PHASES).map(([k, v]) => `
+        <button class="pill ${info.source === 'manual' && info.phase === k ? 'selected' : ''}" data-phase="${k}">${v}</button>`).join('')}
+    </div>
+    <p style="font-size:12px;color:var(--text-secondary);margin-top:12px;">
+      Once the week ends its phase is saved, so it keeps the score it earned.
+      Edit the schedule in Settings.</p>`;
+  openModal({ title: 'Phase this week', content: c });
+  c.querySelectorAll('[data-phase]').forEach(b => b.addEventListener('click', () => {
+    const p = b.dataset.phase;
+    setWeekRec(mondayStr, p ? { phase: p, phaseSource: 'manual' } : { phase: null, phaseSource: null });
+    closeModal();
+    showToast(p ? `Phase set to ${PHASES[p]}.` : 'Phase follows the schedule.', 'success');
+    renderWeek();
+  }));
 }
 
 /* ----------------------------------------------------------
@@ -321,7 +362,7 @@ function weekNumbersHtml(d) {
     lines.push(`Body: no weigh-ins this week, ${pts(b.body)}`);
   } else {
     const ch = d.weightChange;
-    lines.push(`Body: avg ${d.avgWeight.toFixed(1)} kg, change ${ch > 0 ? '+' : ''}${ch.toFixed(2)} kg
+    lines.push(`Body (${PHASES[d.phase]} phase): avg ${d.avgWeight.toFixed(1)} kg, change ${ch > 0 ? '+' : ''}${ch.toFixed(2)} kg
       ${d.bodyLowData ? '(2-week rolling, thin data) ' : ''}(${d.bodyLabel}), ${pts(b.body)}`);
   }
 
@@ -340,7 +381,7 @@ function weekNumbersHtml(d) {
 function buildHowScoresCard(data) {
   const st = CONFIG.steps, lr = CONFIG.loadRatio, ws = CONFIG.weekScore;
   const ds = CONFIG.dietScore, rs = CONFIG.recoveryScore, rc = CONFIG.recovery;
-  const bw = CONFIG.bodyWeight;
+  const bc = CONFIG.bodyScore.cut, bs = CONFIG.bodyScore.steady, br = CONFIG.bodyScore.reverse.band;
   const perDay = st.multiplier / 7;
   const eg10k  = computeDailyStepsLoad(10000);
 
@@ -391,8 +432,12 @@ function buildHowScoresCard(data) {
           Recovery ${ws.recovery}: recovery score x 0.3.<br>
           Food ${ws.dietFood}: Takeaway Damage ${ds.foodGreenMax} or under = full, falls to 0 at ${ds.foodRedMin}.<br>
           Drinks ${ws.dietDrinks}: ${ds.drinksGreenMax} or under = full, falls to 0 at ${ds.drinksRedMin}.<br>
-          Body ${ws.body}: weekly weight change. Down ${bw.targetLossMin} to ${bw.targetLossMax} kg = 10,
-          down more = 6, down 0 to ${bw.targetLossMin} = 6, up 0 to ${bw.targetLossMin} = 3, up more = 0.<br>
+          Body ${ws.body}: weekly weight change, scored by the week's phase.<br>
+          Cut: down ${bc.lossMin} to ${bc.lossMax} kg = 10, down more = 6, down 0 to ${bc.lossMin} = 6,
+          up 0 to ${bc.lossMin} = 3, up more = 0.<br>
+          Baseline, Hold, Season: within ${bs.inner} kg either way = 10, ${bs.inner} to ${bs.outer} = 6, more = 0.<br>
+          Reverse: up 0 to ${br} kg = 10, down 0 to ${br} = 8, up or down more = 3.<br>
+          A week takes the phase in effect on its Sunday (or the one you pick), and keeps it once the week ends.<br>
           Body is Pending while a Live week has no weigh-in yet, n/a with nothing to compare against,
           and 0 only for a completed week with no weigh-ins.<br>
           A slice that is n/a, Pending or Building is left out and the score is scaled to 100.</p>
@@ -555,6 +600,9 @@ function attachWeekHandlers(data) {
     const next = addWeeks(_weekMonday, 1);
     if (next <= weekStartStr(todayStr())) { _weekMonday = next; renderWeek(); }
   });
+
+  body.querySelector('#week-phase')?.addEventListener('click', () => openPhaseModal(data.mondayStr));
+  attachWeeklyChecksHandlers(body, data.mondayStr);
 
   body.querySelector('#week-export')?.addEventListener('click', async () => {
     try { await doExport(); } catch (e) { showToast('Export failed.', 'error'); }

@@ -15,6 +15,7 @@ function renderSettings() {
 
   const frag = document.createDocumentFragment();
   frag.appendChild(buildDataCard());
+  frag.appendChild(buildPhaseCard());
   frag.appendChild(buildSampleDataCard());
   frag.appendChild(buildGymCard());
   frag.appendChild(buildActivitiesCard());
@@ -23,6 +24,7 @@ function renderSettings() {
   frag.appendChild(buildDrinksCard());
   frag.appendChild(buildStepsCard());
   frag.appendChild(buildScoreCard());
+  frag.appendChild(buildWeeklyChecksSettingsCard());
   frag.appendChild(buildResetCard());
 
   body.innerHTML = '';
@@ -53,6 +55,70 @@ function buildDataCard() {
     </div>
     <input type="file" id="s-import-file" accept=".json"
       style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;">`);
+}
+
+/* Phase schedule: each phase runs from its start until the next one starts */
+function buildPhaseCard() {
+  const sched = [...CONFIG.phases.schedule].sort((a, b) => a.start < b.start ? -1 : 1);
+  const rows = sched.map((s, i) => {
+    const next = sched[i + 1];
+    const until = next ? `Until ${fmtDate(addDays(next.start, -1))}` : 'Onwards';
+    return `
+      <div class="ph-row" data-idx="${i}">
+        <select class="input-field" data-ph="phase" aria-label="Phase">
+          ${Object.entries(PHASES).map(([k, v]) => `<option value="${k}" ${k === s.phase ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
+        <input type="date" class="input-field" data-ph="start" value="${s.start}" aria-label="Start date">
+        <button class="icon-btn" data-ph-remove aria-label="Remove phase">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="ph-end">${until}</div>`;
+  }).join('');
+
+  const cur = weekPhaseInfo(weekStartStr(todayStr()));
+  return card('Phase schedule', `
+    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">
+      The phase sets how the Body slice scores weekly weight change. A week takes the phase in effect
+      on its Sunday. Finished weeks keep the phase they were scored under, so editing this only
+      changes this week and later.</div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:4px;">
+      This week: ${PHASES[cur.phase]}${cur.source === 'manual' ? ' (set by you on the Week tab)' : ''}</div>
+    ${rows}
+    <div class="btn-group" style="margin-top:12px;">
+      <button class="btn btn-secondary btn-sm" id="ph-add">Add phase</button>
+      <button class="btn btn-ghost btn-sm" id="ph-reset">Reset schedule</button>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);padding:14px 0 2px;">Body score thresholds (kg a week)</div>
+    ${sRow('Cut: target loss from', '', 'bodyScore.cut.lossMin', CONFIG.bodyScore.cut.lossMin, 0, 2, false, '', 0.05)}
+    ${sRow('Cut: target loss up to', 'faster = losing too fast', 'bodyScore.cut.lossMax', CONFIG.bodyScore.cut.lossMax, 0, 2, false, '', 0.05)}
+    ${sRow('Baseline / Hold / Season: full score within', 'either way', 'bodyScore.steady.inner', CONFIG.bodyScore.steady.inner, 0, 2, false, '', 0.05)}
+    ${sRow('Baseline / Hold / Season: 6 pts up to', 'more = 0', 'bodyScore.steady.outer', CONFIG.bodyScore.steady.outer, 0, 2, false, '', 0.05)}
+    ${sRow('Reverse: band', 'up within = 10, down within = 8', 'bodyScore.reverse.band', CONFIG.bodyScore.reverse.band, 0, 2, true, '', 0.05)}`);
+}
+
+/* Save an edited schedule. Finished weeks are locked to their phase first. */
+async function saveSchedule(sched, msg) {
+  await lockWeekPhases();
+  CONFIG.phases.schedule = sched
+    .filter(s => s.start && PHASES[s.phase])
+    .sort((a, b) => a.start < b.start ? -1 : 1);
+  saveConfig();
+  showToast(msg, 'success');
+  renderSettings();
+}
+
+function buildWeeklyChecksSettingsCard() {
+  const b = CONFIG.weeklyChecks.bench, r = CONFIG.weeklyChecks.bronco;
+  return card('Weekly checks', `
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);padding:4px 0 2px;">Bench e1RM (kg x (1 + reps / 30))</div>
+    ${sRow('Green from', 'kg e1RM', 'weeklyChecks.bench.green', b.green, 1, 400, false, '', 0.5)}
+    ${sRow('Amber from', 'kg e1RM (below = red)', 'weeklyChecks.bench.amber', b.amber, 1, 400, false, '', 0.5)}
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);padding:10px 0 2px;">Bronco (seconds)</div>
+    ${sRow('Green under', `seconds (${fmtMmss(r.green)})`, 'weeklyChecks.bronco.green', r.green, 60, 900)}
+    ${sRow('Amber up to', `seconds (${fmtMmss(r.amber)}, slower = red)`, 'weeklyChecks.bronco.amber', r.amber, 60, 900)}
+    ${sRow('Best before the app', `seconds (${fmtMmss(r.priorBest)})`, 'weeklyChecks.bronco.priorBest', r.priorBest, 60, 900)}
+    ${sRow('Goal', `seconds (${fmtMmss(r.goal)})`, 'weeklyChecks.bronco.goal', r.goal, 60, 900, true)}`);
 }
 
 function buildSampleDataCard() {
@@ -146,7 +212,6 @@ function buildScoreCard() {
   const lr = CONFIG.loadRatio;
   const d  = CONFIG.dietScore;
   const sl = CONFIG.sleep;
-  const bw = CONFIG.bodyWeight;
   return card('Score thresholds', `
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);padding:4px 0 2px;">Load ratio zones</div>
     ${sRow('Green zone min', '(below = coasting)', 'loadRatio.greenMin', lr.greenMin, 0.1, 2, false, '', 0.05)}
@@ -161,10 +226,8 @@ function buildScoreCard() {
     ${sRow('Zero score at (pts)', '', 'dietScore.drinksRedMin', d.drinksRedMin, 1, 50)}
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);padding:10px 0 2px;">Sleep</div>
     ${sRow('Low hours threshold', 'hours (bar goes orange below this)', 'sleep.lowHoursThreshold', sl.lowHoursThreshold, 4, 10, false, '', 0.5)}
-    ${sRow('Sleep target', 'hours (full recovery score)', 'sleep.targetHours', sl.targetHours, 4, 12, false, '', 0.5)}
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);padding:10px 0 2px;">Body weight</div>
-    ${sRow('Target loss min (kg/week)', '', 'bodyWeight.targetLossMin', bw.targetLossMin, 0, 2, false, '', 0.05)}
-    ${sRow('Target loss max (kg/week)', '', 'bodyWeight.targetLossMax', bw.targetLossMax, 0, 2, true, '', 0.05)}`);
+    ${sRow('Sleep target', 'hours (full recovery score)', 'sleep.targetHours', sl.targetHours, 4, 12, true, '', 0.5)}
+    <div style="font-size:12px;color:var(--text-secondary);padding-top:10px;">Body score thresholds are under Phase schedule.</div>`);
 }
 
 function buildResetCard() {
@@ -242,6 +305,34 @@ function attachSettingsHandlers() {
     reader.readAsText(file);
   });
 
+  /* Phase schedule */
+  const sorted = () => [...CONFIG.phases.schedule].sort((a, b) => a.start < b.start ? -1 : 1);
+  body.querySelectorAll('.ph-row').forEach(row => {
+    const i = +row.dataset.idx;
+    row.querySelectorAll('[data-ph]').forEach(el => el.addEventListener('change', () => {
+      if (el.dataset.ph === 'start' && !el.value) return;
+      const sched = sorted().map(s => ({ ...s }));
+      sched[i][el.dataset.ph] = el.value;
+      saveSchedule(sched, 'Schedule saved.');
+    }));
+    row.querySelector('[data-ph-remove]').addEventListener('click', () => {
+      if (CONFIG.phases.schedule.length <= 1) return showToast('Keep at least one phase.', 'error');
+      const sched = sorted();
+      confirmAction(`Remove ${PHASES[sched[i].phase]} from ${fmtDate(sched[i].start)}?`,
+        () => saveSchedule(sched.filter((_, j) => j !== i), 'Phase removed.'));
+    });
+  });
+  body.querySelector('#ph-add')?.addEventListener('click', () => {
+    const sched = sorted();
+    const last  = sched[sched.length - 1];
+    const start = last && last.start >= todayStr() ? addDays(last.start, 7) : todayStr();
+    saveSchedule([...sched, { phase: 'hold', start }], 'Phase added. Set its type and date.');
+  });
+  body.querySelector('#ph-reset')?.addEventListener('click', () => {
+    confirmAction('Reset the phase schedule to the default dates? Finished weeks keep their phase.',
+      () => saveSchedule(deepClone(DEFAULT_CONFIG.phases.schedule), 'Schedule reset.'));
+  });
+
   /* Sample data */
   body.querySelector('#s-sample')?.addEventListener('click', () => loadSampleData());
 
@@ -249,7 +340,8 @@ function attachSettingsHandlers() {
   body.querySelector('#s-reset')?.addEventListener('click', () => {
     confirmAction(
       'Reset all settings to their original defaults?',
-      () => {
+      async () => {
+        await lockWeekPhases();
         resetConfig();
         showToast('Settings reset to defaults.');
         renderSettings();
